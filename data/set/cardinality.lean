@@ -34,30 +34,33 @@ open function
 namespace set
 variables {α β γ : Type u}
 
-def dominated_by (α β : Type u) : Prop :=
-∃ f : α → β, injective f
+def dominated_by (α β : Type u) : Type u :=
+Σ' f : α → β, injective f
 
 infix ` ≼ `:50 := dominated_by
 
-@[refl,simp] lemma dominated_by_refl : α ≼ α :=
+@[refl] def dominated_by_refl : α ≼ α :=
 ⟨id, injective_id⟩
 
-@[trans] lemma dominated_by_trans : α ≼ β → β ≼ γ → α ≼ γ
+@[trans] def dominated_by_trans : α ≼ β → β ≼ γ → α ≼ γ
 | ⟨fab, iab⟩ ⟨fbc, ibc⟩ := ⟨fbc ∘ fab, injective_comp ibc iab⟩
 
-def equinumerous (α β : Type u) : Prop :=
-∃ f : α → β, bijective f
+def equinumerous (α β : Type u) : Type u :=
+Σ' f : α → β, Σ' g : β → α, (∀ b, f (g b) = b) ∧ (∀ a, g (f a) = a)
 
 infix ` ≅ `:50 := equinumerous
 
-@[refl,simp] lemma equinumerous.refl : α ≅ α :=
-⟨id, bijective_id⟩
+@[refl] def equinumerous.refl : α ≅ α :=
+⟨id, id, λ _, rfl, λ _, rfl⟩
 
-@[symm] lemma equinumerous.symm : α ≅ β → β ≅ α
-| ⟨f, fbij⟩ := ⟨fbij.inv, bijective_inv_bijective _⟩
+@[symm] def equinumerous.symm : α ≅ β → β ≅ α
+| ⟨f, g, fg, gf⟩ := ⟨g, f, gf, fg⟩
 
-@[trans] lemma equinumerous.trans : α ≅ β → β ≅ γ → α ≅ γ
-| ⟨f, fbij⟩ ⟨g, gbij⟩ := ⟨g ∘ f, bijective_comp gbij fbij⟩
+@[trans] def equinumerous.trans : α ≅ β → β ≅ γ → α ≅ γ
+| ⟨f1, g1, fg1, gf1⟩ ⟨f2, g2, fg2, gf2⟩ :=
+    ⟨f2 ∘ f1, g1 ∘ g2,
+    by intro; simp [function.comp, *],
+    by intro; simp [function.comp, *]⟩
 
 def sum.map {α α' : Type u} {β β' : Type v}
     (f : α → α') (g : β → β') : α ⊕ β → α' ⊕ β'
@@ -65,43 +68,37 @@ def sum.map {α α' : Type u} {β β' : Type v}
 | (sum.inr b) := sum.inr (g b)
 
 @[congr]
-lemma equinumerous.congr_sum {α α' : Type u} {β β' : Type v} :
-    α ≅ α' → β ≅ β' → (α ⊕ β) ≅ (α' ⊕ β') | ⟨f, fbij⟩ ⟨g, gbij⟩ :=
-⟨sum.map f g, begin
-intros a b, cases a; cases b; simp [sum.map]; intro h; injection h; tactic.congr,
-apply fbij.left, assumption, apply gbij.left, assumption
-end, begin
-intro c, cases c with a b,
-{cases fbij.right a with a aspec, existsi sum.inl a, simp [sum.map, *] },
-{cases gbij.right b with b bspec, existsi sum.inr b, simp [sum.map, *] }
-end⟩
+def equinumerous.congr_sum {α α' : Type u} {β β' : Type v} :
+    α ≅ α' → β ≅ β' → (α ⊕ β) ≅ (α' ⊕ β') | ⟨f1, g1, fg1, gf1⟩ ⟨f2, g2, fg2, gf2⟩ :=
+⟨sum.map f1 f2, sum.map g1 g2,
+    by intro b; cases b; simp [*, sum.map],
+    by intro a; cases a; simp [*, sum.map]⟩
 
 def sum.swap {α : Type u} {β : Type v} : α ⊕ β → β ⊕ α
 | (sum.inl a) := sum.inr a
 | (sum.inr b) := sum.inl b
 
-lemma equinumerous.sum_comm {α : Type u} {β : Type v} :
+def equinumerous.sum_comm {α : Type u} {β : Type v} :
     (α ⊕ β) ≅ (β ⊕ α) :=
-⟨sum.swap, begin
-intros a b, cases a; cases b; simp [sum.swap]; intro h; injection h; simp*,
-end, begin
-intro c, cases c with a b,
-{existsi sum.inr a, simp [sum.swap, *] },
-{existsi sum.inl b, simp [sum.swap, *] }
-end⟩
+⟨sum.swap, sum.swap,
+    by intro b; cases b; simp [*, sum.swap],
+    by intro a; cases a; simp [*, sum.swap]⟩
 
-local attribute [instance] classical.prop_decidable
-lemma equinumerous.disjoint_union {α : Type u} {X : set α} :
+def sum.merge {α : Type u} {X : set α} :
+    {a // a ∈ X} ⊕ {a // a ∉ X} → α
+| (sum.inl ⟨a, _⟩) := a
+| (sum.inr ⟨a, _⟩) := a
+
+def equinumerous.disjoint_union {α : Type u} {X : set α} [∀ a, decidable $ a ∈ X] :
     α ≅ ({a // a ∈ X} ⊕ {a // a ∉ X}) :=
-⟨λ a, if h : a ∈ X then sum.inl ⟨a,h⟩ else sum.inr ⟨a,h⟩,
+⟨λ a, if h : a ∈ X then sum.inl ⟨a,h⟩ else sum.inr ⟨a,h⟩, sum.merge,
 begin
-    intros a b,
-    by_cases a ∈ X with ax; by_cases b ∈ X with bx;
-    simp*; intro h; repeat {injection h},
+    intro b,
+    by_cases sum.merge b ∈ X; simp [*];
+    cases b; cases a with b bx; simp [sum.merge] at h;
+    try {contradiction}; refl
 end,
-begin
-    intros a, cases a with a a; cases a with a ax; existsi a; simp*,
-end⟩
+begin intro a, by_cases a ∈ X; simp [sum.merge, *], end⟩
 
 end set
 
@@ -144,7 +141,7 @@ refine ⟨⟨b, bspec.left⟩, _⟩,
 unfold h1inv, tactic.congr, apply bspec.right
 end
 
-lemma part1 (ginj: injective g) : {b // b ∈ -(f '' -X)} ≅ {a // a ∈ X} :=
+def part1 (ginj: injective g) : {b // b ∈ -(f '' -X)} ≅ {a // a ∈ X} :=
 ⟨h1inv, h1inv_inj ginj, h1inv_surj⟩
 
 def h2 : {a // a ∈ -X} → {b // b ∈ f '' -X} | ⟨a, hnx⟩ :=
@@ -162,10 +159,10 @@ refine ⟨⟨a, aspec.left⟩, _⟩,
 unfold h2, tactic.congr, apply aspec.right
 end
 
-lemma part2 (finj: injective f) : {a // a ∈ -X} ≅ {b // b ∈ f '' -X} :=
+def part2 (finj: injective f) : {a // a ∈ -X} ≅ {b // b ∈ f '' -X} :=
 ⟨h2, h2_inj finj, h2_surj⟩
 
-lemma eqn (finj : injective f) (ginj : injective g) : α ≅ β :=
+noncomputable lemma eqn (finj : injective f) (ginj : injective g) : α ≅ β :=
 calc α ≅ ({a // a ∈ X} ⊕ {a // a ∉ X}) : equinumerous.disjoint_union
    ... ≅ ({b // b ∈ -(f '' -X)} ⊕ {b // b ∈ f '' -X}) :
             equinumerous.congr_sum (part1 ginj).symm (part2 finj)
@@ -178,7 +175,7 @@ end set.cantor_schroeder_bernstein
 namespace set
 variables {α β γ : Type u}
 
-lemma cantor_schroeder_bernstein : α ≼ β → β ≼ α → α ≅ β
+noncomputable def cantor_schroeder_bernstein : α ≼ β → β ≼ α → α ≅ β
 | ⟨f, finj⟩ ⟨g, ginj⟩ := set.cantor_schroeder_bernstein.eqn _ _ finj ginj
 
 end set
