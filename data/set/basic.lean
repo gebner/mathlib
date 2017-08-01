@@ -410,6 +410,9 @@ by finish [set_eq_def]
 theorem compl_comp_compl : compl ∘ compl = @id (set α) :=
 funext compl_compl
 
+theorem compl_subset (t s : set α) : t ⊆ s → -s ⊆ -t :=
+λ hts a hns ht, hns (hts ht)
+
 /- set difference -/
 
 theorem diff_eq (s t : set α) : s \ t = s ∩ -t := rfl
