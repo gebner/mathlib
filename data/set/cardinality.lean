@@ -31,24 +31,24 @@ end function
 
 open function
 
-namespace set
-variables {α β γ : Type u}
-
-def dominated_by (α β : Type u) : Prop :=
+def set.dominated_by (α β : Type u) : Prop :=
 ∃ f : α → β, injective f
 
-infix ` ≼ `:50 := dominated_by
+local infix ` ≼ `:50 := set.dominated_by
+
+def set.equinumerous (α β : Type u) : Prop :=
+∃ f : α → β, bijective f
+
+local infix ` ≅ `:50 := set.equinumerous
+
+namespace set
+variables {α β γ : Type u}
 
 @[refl,simp] lemma dominated_by_refl : α ≼ α :=
 ⟨id, injective_id⟩
 
 @[trans] lemma dominated_by_trans : α ≼ β → β ≼ γ → α ≼ γ
 | ⟨fab, iab⟩ ⟨fbc, ibc⟩ := ⟨fbc ∘ fab, injective_comp ibc iab⟩
-
-def equinumerous (α β : Type u) : Prop :=
-∃ f : α → β, bijective f
-
-infix ` ≅ `:50 := equinumerous
 
 @[refl,simp] lemma equinumerous.refl : α ≅ α :=
 ⟨id, bijective_id⟩
@@ -58,6 +58,11 @@ infix ` ≅ `:50 := equinumerous
 
 @[trans] lemma equinumerous.trans : α ≅ β → β ≅ γ → α ≅ γ
 | ⟨f, fbij⟩ ⟨g, gbij⟩ := ⟨g ∘ f, bijective_comp gbij fbij⟩
+
+lemma dominated_eqn_congr {α α' β β' : Type v} :
+    α' ≅ α → β ≅ β' → α ≼ β → α' ≼ β'
+| ⟨f, finj, _⟩ ⟨g, ginj, _⟩ ⟨h, hinj⟩ :=
+    ⟨g ∘ h ∘ f, injective_comp ginj (injective_comp hinj finj)⟩
 
 def sum.map {α α' : Type u} {β β' : Type v}
     (f : α → α') (g : β → β') : α ⊕ β → α' ⊕ β'
@@ -180,5 +185,64 @@ variables {α β γ : Type u}
 
 lemma cantor_schroeder_bernstein : α ≼ β → β ≼ α → α ≅ β
 | ⟨f, finj⟩ ⟨g, ginj⟩ := set.cantor_schroeder_bernstein.eqn _ _ finj ginj
+
+protected lemma equinumerous.dominates : α ≅ β → α ≼ β
+| ⟨f, finj, fsurj⟩ := ⟨f, finj⟩
+
+end set
+
+namespace set
+
+@[instance] def equinumerosity_setoid : setoid (Type u) :=
+{ r := (≅),
+  iseqv := ⟨@equinumerous.refl, @equinumerous.symm, @equinumerous.trans⟩ }
+
+def cardinality : Type (u+1) :=
+quotient equinumerosity_setoid
+
+def card (α : Type u) : cardinality := ⟦α⟧
+
+namespace cardinality
+
+protected def le (a b : cardinality) : Prop :=
+quotient.lift₂ (≼) (begin
+    intros; apply propext; split; apply dominated_eqn_congr;
+    try { assumption <|> `[apply equinumerous.symm; assumption] }
+end) a b
+
+protected def has_le : has_le cardinality := ⟨cardinality.le⟩
+local attribute [instance] cardinality.has_le
+
+instance : linear_strong_order_pair cardinality.{u} := {
+    le := cardinality.le,
+    lt := λ a b, a ≤ b ∧ a ≠ b,
+    le_refl := quotient.ind begin intro a, apply dominated_by_refl end,
+    le_trans := begin
+        refine quotient.ind _, intro a,
+        refine quotient.ind _, intro b,
+        refine quotient.ind _, intro c,
+        apply dominated_by_trans
+    end,
+    le_antisymm := begin
+        refine quotient.ind _, intro a,
+        refine quotient.ind _, intro b,
+        intros ab ba,
+        apply quotient.sound,
+        apply cantor_schroeder_bernstein; assumption
+    end,
+    le_iff_lt_or_eq :=
+    begin
+        intros a b, change a ≤ b ↔ ((a ≤ b ∧ a ≠ b) ∨ a = b), split; intro h,
+        { cases classical.prop_decidable (a = b),
+         {left, split; assumption}, {right, assumption} },
+        {cases h with h h, apply h.left, subst h,
+         revert a, refine quotient.ind _, intro a,
+         apply dominated_by_refl }
+    end,
+    lt_irrefl := λ a alta, alta.right rfl,
+    le_total := _,
+}
+
+end cardinality
 
 end set
