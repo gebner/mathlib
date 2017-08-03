@@ -201,9 +201,22 @@ let ⟨ub, (hub : ∀a∈max_chain, a ≺ ub)⟩ := this in
 
 end chain
 
+def po_chain {α : Type u} [partial_order α] (c : set α) :=
+∀ x ∈ c, ∀ y ∈ c, x ≤ y ∨ y ≤ x
+
+lemma chain_iff_po_chain {α : Type u} [partial_order α] {c : set α} : po_chain c ↔ @chain α (≤) c :=
+begin
+split,
+{intros hpoc x hx y hy hneq, apply hpoc; assumption},
+{intros hc x hx y hy, by_cases x = y,
+ {subst h, left, reflexivity},
+ {apply hc; assumption}}
+end
+
 theorem zorn_partial_order {α : Type u} [partial_order α]
-  (h : ∀c:set α, @chain α (≤) c → ∃ub, ∀a∈c, a ≤ ub) : ∃m:α, ∀a, m ≤ a → a = m :=
-let ⟨m, hm⟩ := @zorn α (≤) h (assume a b c, le_trans) in
+  (h : ∀ c : set α, po_chain c → ∃ ub, ∀ a ∈ c, a ≤ ub) :
+  ∃ m : α, ∀ a, m ≤ a → a = m :=
+let ⟨m, hm⟩ := @zorn α (≤) (λ c hc, h _ (chain_iff_po_chain.mpr hc)) (assume a b c, le_trans) in
 ⟨m, assume a ha, le_antisymm (hm a ha) ha⟩
 
 end zorn

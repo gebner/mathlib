@@ -28,8 +28,10 @@ theorem set_eq_def (s t : set α) : s = t ↔ ∀ x, x ∈ s ↔ x ∈ t :=
 -- TODO(Jeremy): write a tactic to unfold specific instances of generic notation?
 theorem subset_def {s t : set α} : (s ⊆ t) = ∀ x, x ∈ s → x ∈ t := rfl
 
+@[refl]
 theorem subset.refl (a : set α) : a ⊆ a := assume x, id
 
+@[trans]
 theorem subset.trans {a b c : set α} (subab : a ⊆ b) (subbc : b ⊆ c) : a ⊆ c :=
 assume x, assume ax, subbc (subab ax)
 

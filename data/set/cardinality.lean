@@ -2,6 +2,7 @@ import data.set.basic
 import algebra.lattice.fixed_points
 import data.set.lattice
 import data.set.classical_inverse
+import algebra.lattice.zorn
 universes u v
 
 namespace function
@@ -191,6 +192,115 @@ protected lemma equinumerous.dominates : α ≅ β → α ≼ β
 
 end set
 
+namespace set.comparable
+section
+variables {α β : Type u}
+
+structure pif (α β : Type u) :=
+(d : set α)
+(f : subtype d → β)
+(finj : injective f)
+
+local attribute [instance] classical.prop_decidable
+def pif.le : pif α β → pif α β → Prop
+| ⟨d1, f1, _⟩ ⟨d2, f2, _⟩ :=
+    if h : d1 ⊆ d2 then
+        ∀ x ∈ d1, f1 ⟨x, H⟩ = f2 ⟨x, by exact h H⟩
+    else false
+local attribute [simp] pif.le
+
+instance: partial_order (pif α β) := {
+    le := pif.le,
+    le_refl := show ∀ a, pif.le a a,
+        begin intro a, cases a with d f finj a,
+            have: d ⊆ d, {reflexivity},
+            simp [pif.le, *], cc
+        end,
+    le_trans := show ∀ a b c : pif α β, pif.le a b → pif.le b c → pif.le a c,
+        begin intros a b c hab hbc,
+            cases a with d1 f1 finj1,
+            cases b with d2 f2 finj2,
+            cases c with d3 f3 finj3,
+            by_cases d1 ⊆ d2; by_cases d2 ⊆ d3; simp * at *,
+            have: d1 ⊆ d3, {transitivity; assumption},
+            simp *, intros, simp *
+        end,
+    le_antisymm := show ∀ a b : pif α β, pif.le a b → pif.le b a → a = b,
+        begin intros a b hab hba,
+            cases a with d1 f1 finj1,
+            cases b with d2 f2 finj2,
+            by_cases d1 ⊆ d2; by_cases d2 ⊆ d1; simp * at *,
+            clear hab,
+            have: d1 = d2, {apply set.subset.antisymm; assumption}, subst this,
+            have: f1 = f2, {apply funext, intros, cases x, simp *, tactic.congr}, subst this
+        end
+}
+
+#print "foo"
+
+
+set_option pp.proofs true
+-- set_option pp.all true
+lemma ex_max : ∃ m : pif α β, ∀ a, a ≥ m → a = m :=
+zorn.zorn_partial_order
+begin
+intros c hc,
+let d := λ a : α, ∃ p : pif α β, p ∈ c ∧ a ∈ p.d,
+let f : subtype d → β := λ ⟨a, ha⟩,
+    (classical.some ha).f ⟨a, (classical.some_spec ha).right⟩,
+have finj: injective f, {intros a b heq,
+    cases a with a ha, cases b with b hb,
+    revert f, simp,
+    generalize: (classical.some_spec ha).right = had,
+    generalize: (classical.some_spec hb).right = hbd,
+    revert had hbd,
+    generalize hsa: classical.some ha = sa,
+    generalize hsb: classical.some hb = sb,
+    have hcab := hc sa _ sb _,
+    {cases sa with da fa fainj, cases sb with db fb fbinj,
+    dsimp, intros had hbd heq,
+    simp [has_le.le, preorder.le, partial_order.le] at hcab,
+    cases hcab with hcab hcab,
+    { by_cases da ⊆ db; simp [h] at hcab; try {contradiction},
+      have: (⟨a, h had⟩ : subtype db) = ⟨b, hbd⟩,
+      apply fbinj, transitivity,
+      apply (hcab _ _).symm; assumption, assumption,
+      injection this, cc,
+    },
+    { by_cases db ⊆ da; simp [h] at hcab; try {contradiction},
+      have: (⟨a, had⟩ : subtype da) = ⟨b, h hbd⟩,
+      apply fainj, transitivity, assumption,
+      apply (hcab _ _); assumption,
+      injection this, cc,
+    }},
+    {rw ← hsa, apply (classical.some_spec ha).left},
+    {rw ← hsb, apply (classical.some_spec hb).left},
+},
+refine ⟨⟨d, f, finj⟩, _⟩,
+intro a, have hc := hc a, cases a with da fa fainj, intro hac,
+have hdad: da ⊆ d, {intros a hda, refine ⟨_, hac, hda⟩},
+simp [hdad, has_le.le, preorder.le, partial_order.le],
+intros a hda,
+revert f, simp, intros finj,
+generalize: ((iff_true_intro hdad).mpr true.intro hda) = had,
+cases classical.some_spec had with hadc,
+cases hc hac (classical.some had) hadc,
+{cases classical.some had,
+ by_cases da ⊆ d_1; simp [h, has_le.le, preorder.le, partial_order.le, pif.le] at a_2,
+ apply a_2, cases a_2},
+{cases classical.some had,
+ by_cases d_1 ⊆ da; simp [h, has_le.le, preorder.le, partial_order.le, pif.le] at a_2,
+ apply a_2, cases a_2},
+end
+
+
+
+
+#check zorn.zorn_partial_order
+
+end
+end set.comparable
+
 namespace set
 
 @[instance] def equinumerosity_setoid : setoid (Type u) :=
@@ -205,17 +315,16 @@ def card (α : Type u) : cardinality := ⟦α⟧
 namespace cardinality
 
 protected def le (a b : cardinality) : Prop :=
-quotient.lift₂ (≼) (begin
+quotient.lift_on₂ a b (≼) begin
     intros; apply propext; split; apply dominated_eqn_congr;
     try { assumption <|> `[apply equinumerous.symm; assumption] }
-end) a b
+end
 
 protected def has_le : has_le cardinality := ⟨cardinality.le⟩
 local attribute [instance] cardinality.has_le
 
-instance : linear_strong_order_pair cardinality.{u} := {
+instance : linear_order cardinality.{u} := {
     le := cardinality.le,
-    lt := λ a b, a ≤ b ∧ a ≠ b,
     le_refl := quotient.ind begin intro a, apply dominated_by_refl end,
     le_trans := begin
         refine quotient.ind _, intro a,
@@ -230,16 +339,6 @@ instance : linear_strong_order_pair cardinality.{u} := {
         apply quotient.sound,
         apply cantor_schroeder_bernstein; assumption
     end,
-    le_iff_lt_or_eq :=
-    begin
-        intros a b, change a ≤ b ↔ ((a ≤ b ∧ a ≠ b) ∨ a = b), split; intro h,
-        { cases classical.prop_decidable (a = b),
-         {left, split; assumption}, {right, assumption} },
-        {cases h with h h, apply h.left, subst h,
-         revert a, refine quotient.ind _, intro a,
-         apply dominated_by_refl }
-    end,
-    lt_irrefl := λ a alta, alta.right rfl,
     le_total := _,
 }
 
