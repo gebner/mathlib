@@ -3,11 +3,12 @@ import algebra.lattice.fixed_points
 import data.set.lattice
 import data.set.classical_inverse
 import algebra.lattice.zorn
-universes u v
+import data.set.function
+universes u v w
 
 namespace function
 
-variables {α β : Type u} {f : α → β} (fbij : bijective f)
+variables {α : Type u} {β : Type v} {f : α → β} (fbij : bijective f)
 
 noncomputable def bijective.inv : β → α
 | b := classical.some (fbij.right b)
@@ -32,18 +33,21 @@ end function
 
 open function
 
-def set.dominated_by (α β : Type u) : Prop :=
+lemma ulift.down.inj (α : Type u) : injective (@ulift.down α)
+| x y h := by cases x; cases y; cases h; refl
+
+def set.dominated_by (α : Type u) (β : Type v) : Prop :=
 ∃ f : α → β, injective f
 
 local infix ` ≼ `:50 := set.dominated_by
 
-def set.equinumerous (α β : Type u) : Prop :=
+def set.equinumerous (α : Type u) (β : Type v) : Prop :=
 ∃ f : α → β, bijective f
 
 local infix ` ≅ `:50 := set.equinumerous
 
 namespace set
-variables {α β γ : Type u}
+variables {α : Type u} {β : Type v} {γ : Type w}
 
 @[refl,simp] lemma dominated_by_refl : α ≼ α :=
 ⟨id, injective_id⟩
@@ -65,14 +69,30 @@ lemma dominated_eqn_congr {α α' β β' : Type v} :
 | ⟨f, finj, _⟩ ⟨g, ginj, _⟩ ⟨h, hinj⟩ :=
     ⟨g ∘ h ∘ f, injective_comp ginj (injective_comp hinj finj)⟩
 
-def sum.map {α α' : Type u} {β β' : Type v}
-    (f : α → α') (g : β → β') : α ⊕ β → α' ⊕ β'
+@[congr]
+lemma equinumerous.congr_eqn {α α' β β'} :
+    α ≅ α' → β ≅ β' → (α ≅ β) = (α' ≅ β') :=
+begin
+intros ha hb, apply propext, split; intro h,
+{transitivity, apply equinumerous.symm, apply ha, transitivity, apply h, apply hb},
+{transitivity, apply ha, transitivity, apply h, apply equinumerous.symm, apply hb},
+end
+
+def sum.map {α α' β β'} (f : α → α') (g : β → β') : α ⊕ β → α' ⊕ β'
 | (sum.inl a) := sum.inl (f a)
 | (sum.inr b) := sum.inr (g b)
 
 @[congr]
-lemma equinumerous.congr_sum {α α' : Type u} {β β' : Type v} :
-    α ≅ α' → β ≅ β' → (α ⊕ β) ≅ (α' ⊕ β') | ⟨f, fbij⟩ ⟨g, gbij⟩ :=
+lemma dominated.congr_sum {α α' β β'} : α ≼ α' → β ≼ β' → (α ⊕ β) ≼ (α' ⊕ β')
+| ⟨f, finj⟩ ⟨g, ginj⟩ := ⟨sum.map f g, begin
+intros a b, cases a; cases b; simp [sum.map]; intro h; injection h; tactic.congr,
+apply finj, assumption, apply ginj, assumption
+end⟩
+
+@[congr]
+lemma equinumerous.congr_sum {α α' β β'} :
+    α ≅ α' → β ≅ β' → (α ⊕ β) ≅ (α' ⊕ β')
+| ⟨f, fbij⟩ ⟨g, gbij⟩ :=
 ⟨sum.map f g, begin
 intros a b, cases a; cases b; simp [sum.map]; intro h; injection h; tactic.congr,
 apply fbij.left, assumption, apply gbij.left, assumption
@@ -81,6 +101,16 @@ intro c, cases c with a b,
 {cases fbij.right a with a aspec, existsi sum.inl a, simp [sum.map, *] },
 {cases gbij.right b with b bspec, existsi sum.inr b, simp [sum.map, *] }
 end⟩
+
+@[simp] lemma sum_ulift {α : Type v} : ulift α ≅ α :=
+⟨ulift.down,
+begin intros x y h, cases x; cases y; simp [sum.map, *] at * end,
+begin intro b, existsi ulift.up b, refl end⟩
+
+@[simp]
+lemma sum_empty {α : Type u} : (α ⊕ empty) ≅ α :=
+equinumerous.symm ⟨sum.inl, @sum.inl.inj _ _,
+    begin intro b, cases b, existsi a, refl, cases a end⟩
 
 def sum.swap {α : Type u} {β : Type v} : α ⊕ β → β ⊕ α
 | (sum.inl a) := sum.inr a
@@ -96,6 +126,62 @@ intro c, cases c with a b,
 {existsi sum.inl b, simp [sum.swap, *] }
 end⟩
 
+def sum.reassoc {α β γ} : ((α ⊕ β) ⊕ γ) → (α ⊕ (β ⊕ γ))
+| (sum.inl (sum.inl a)) := sum.inl a
+| (sum.inl (sum.inr b)) := sum.inr (sum.inl b)
+| (sum.inr c) := sum.inr (sum.inr c)
+
+lemma equinumerous.sum_assoc {α β γ} : ((α ⊕ β) ⊕ γ) ≅ (α ⊕ (β ⊕ γ)) :=
+⟨sum.reassoc,
+begin intros a b h, cases a; cases a <|> skip; cases b; cases a_1 <|> skip;
+    simp [sum.reassoc] at h; cc end,
+begin intro b, cases b, exact ⟨sum.inl (sum.inl a), rfl⟩,
+    cases a, exact ⟨sum.inl (sum.inr a), rfl⟩, exact ⟨sum.inr a, rfl⟩ end⟩
+
+@[congr]
+lemma equinumerous.congr_prod {α α' β β'} :
+    α ≅ α' → β ≅ β' → (α × β) ≅ (α' × β')
+| ⟨f, finj, fsurj⟩ ⟨g, ginj, gsurj⟩ :=
+⟨λ ⟨x, y⟩, ⟨f x, g y⟩,
+λ ⟨xa, ya⟩ ⟨xb, yb⟩, begin simp, intro h, cases h with hx hy, split,
+    {apply finj, assumption}, {apply ginj, assumption} end,
+λ ⟨x, y⟩, begin simp,
+    cases fsurj x with x', existsi x', simp *,
+    cases gsurj y with y', existsi y', simp *,
+end⟩
+
+lemma equinumerous.prod_comm {α : Type u} {β : Type v} :
+    (α × β) ≅ (β × α) :=
+⟨λ ⟨x, y⟩, ⟨y, x⟩,
+λ ⟨xa, ya⟩ ⟨xb, yb⟩, by simp; intro h; cases h with hx hy; split; assumption,
+λ ⟨y, x⟩, ⟨⟨x, y⟩, rfl⟩⟩
+
+lemma equinumerous.prod_assoc {α : Type u} {β : Type v} {γ : Type w} :
+    ((α × β) × γ) ≅ (α × (β × γ)) :=
+⟨λ ⟨⟨x, y⟩, z⟩, ⟨x, y, z⟩,
+λ ⟨⟨xa,ya⟩, za⟩ ⟨⟨xb, yb⟩, zb⟩, by simp; intro h; simp *,
+λ ⟨x, y, z⟩, ⟨⟨⟨x,y⟩, z⟩, rfl⟩⟩
+
+@[simp]
+lemma equinumerous.prod_unit {α : Type u} : (α × unit) ≅ α :=
+⟨prod.fst, λ a b, by cases a; cases b; cc, λ a, ⟨(a, ()), rfl⟩⟩
+
+@[simp]
+lemma equinumerous.prod_empty {α : Type u} : (α × empty) ≅ empty :=
+equinumerous.symm ⟨empty.rec _, λ a b, match b with end, λ a, match a with end⟩
+
+lemma prod_sum_distrib {α β γ} : (α × (β ⊕ γ)) ≅ ((α × β) ⊕ (α × γ)) :=
+⟨λ ⟨a, bc⟩, match bc with
+    | sum.inl b := sum.inl (a, b)
+    | sum.inr c := sum.inr (a, c)
+    end,
+λ ⟨xa, xbc⟩ ⟨ya, ybc⟩, begin
+clear _fun_match, clear _fun_match,
+simp at *, cases xbc with xb xc; cases ybc with yb yc; simp; cc,
+end,
+begin intro abc, cases abc with ab ac; cases ab with a b <|> cases ac with a c; simp; existsi a,
+{existsi sum.inl b, simp}, {existsi sum.inr c, simp}, end⟩
+
 local attribute [instance] classical.prop_decidable
 lemma equinumerous.disjoint_union {α : Type u} {X : set α} :
     α ≅ ({a // a ∈ X} ⊕ {a // a ∉ X}) :=
@@ -105,23 +191,20 @@ begin
     by_cases a ∈ X with ax; by_cases b ∈ X with bx;
     simp*; intro h; repeat {injection h},
 end,
-begin
-    intros a, cases a with a a; cases a with a ax; existsi a; simp*,
-end⟩
+by intros a; cases a with a a; cases a with a ax; existsi a; simp*⟩
 
 end set
 
 namespace set.cantor_schroeder_bernstein
-open set
 section
+open set
 parameters {α β : Type u} (f : α → β) (g : β → α)
 
 def phi (x : set α) : set α :=
 g '' -(f '' -x)
 
-lemma phi_monotone : monotone phi :=
-begin
-intros x y xiny,
+lemma phi_monotone : monotone phi
+| x y xiny := begin
 apply image_subset, apply compl_subset,
 apply image_subset, apply compl_subset,
 assumption
@@ -132,19 +215,15 @@ def X := lattice.lfp phi
 lemma X_spec : X = g '' -(f '' -X) :=
 show X = phi X, by unfold X; rw [←lattice.lfp_eq (phi_monotone f g)]
 
-local attribute [instance] classical.prop_decidable
-
 def h1inv : {b // b ∈ -(f '' -X)} → {a // a ∈ X} | ⟨b, bnfnx⟩ :=
 ⟨g b, begin rw X_spec, apply mem_image bnfnx rfl end⟩
 
 lemma h1inv_inj (ginj : injective g) : injective h1inv
-| ⟨a, anfnx⟩ ⟨b, bnfnx⟩ gaeqgb := begin
-injection gaeqgb with gaeqgb, tactic.congr,
-apply ginj, assumption,
-end
+| ⟨a, anfnx⟩ ⟨b, bnfnx⟩ gaeqgb :=
+begin injection gaeqgb, tactic.congr, apply ginj, assumption end
 
-lemma h1inv_surj : surjective h1inv | ⟨a, ax⟩ :=
-begin
+lemma h1inv_surj : surjective h1inv
+| ⟨a, ax⟩ := begin
 rw X_spec at ax, cases ax with b bspec,
 refine ⟨⟨b, bspec.left⟩, _⟩,
 unfold h1inv, tactic.congr, apply bspec.right
@@ -157,16 +236,11 @@ def h2 : {a // a ∈ -X} → {b // b ∈ f '' -X} | ⟨a, hnx⟩ :=
 ⟨f a, mem_image hnx rfl⟩
 
 lemma h2_inj (finj : injective f) : injective h2
-| ⟨a, anx⟩ ⟨b, bnx⟩ faeqfb := begin
-tactic.congr, injection faeqfb with faeqfb,
-apply finj, assumption
-end
+| ⟨a, anx⟩ ⟨b, bnx⟩ faeqfb :=
+begin tactic.congr, injection faeqfb, apply finj, assumption end
 
-lemma h2_surj : surjective h2 | ⟨b, bfnx⟩ := begin
-cases bfnx with a aspec,
-refine ⟨⟨a, aspec.left⟩, _⟩,
-unfold h2, tactic.congr, apply aspec.right
-end
+lemma h2_surj : surjective h2
+| ⟨b, ⟨a, aspec⟩⟩ := ⟨⟨a, aspec.left⟩, by { unfold h2, tactic.congr, apply aspec.right }⟩
 
 lemma part2 (finj: injective f) : {a // a ∈ -X} ≅ {b // b ∈ f '' -X} :=
 ⟨h2, h2_inj finj, h2_surj⟩
@@ -193,112 +267,92 @@ protected lemma equinumerous.dominates : α ≅ β → α ≼ β
 end set
 
 namespace set.comparable
-section
-variables {α β : Type u}
+open set.graph
 
 structure pif (α β : Type u) :=
-(d : set α)
-(f : subtype d → β)
-(finj : injective f)
+(g : α → β → Prop)
+(pfn : partial_fun g)
+(inj : set.graph.injective g)
 
-local attribute [instance] classical.prop_decidable
-def pif.le : pif α β → pif α β → Prop
-| ⟨d1, f1, _⟩ ⟨d2, f2, _⟩ :=
-    if h : d1 ⊆ d2 then
-        ∀ x ∈ d1, f1 ⟨x, H⟩ = f2 ⟨x, by exact h H⟩
-    else false
-local attribute [simp] pif.le
-
-instance: partial_order (pif α β) := {
-    le := pif.le,
-    le_refl := show ∀ a, pif.le a a,
-        begin intro a, cases a with d f finj a,
-            have: d ⊆ d, {reflexivity},
-            simp [pif.le, *], cc
-        end,
-    le_trans := show ∀ a b c : pif α β, pif.le a b → pif.le b c → pif.le a c,
-        begin intros a b c hab hbc,
-            cases a with d1 f1 finj1,
-            cases b with d2 f2 finj2,
-            cases c with d3 f3 finj3,
-            by_cases d1 ⊆ d2; by_cases d2 ⊆ d3; simp * at *,
-            have: d1 ⊆ d3, {transitivity; assumption},
-            simp *, intros, simp *
-        end,
-    le_antisymm := show ∀ a b : pif α β, pif.le a b → pif.le b a → a = b,
-        begin intros a b hab hba,
-            cases a with d1 f1 finj1,
-            cases b with d2 f2 finj2,
-            by_cases d1 ⊆ d2; by_cases d2 ⊆ d1; simp * at *,
-            clear hab,
-            have: d1 = d2, {apply set.subset.antisymm; assumption}, subst this,
-            have: f1 = f2, {apply funext, intros, cases x, simp *, tactic.congr}, subst this
-        end
+instance (α β : Type u) : partial_order (pif α β) := {
+    le := λ f g, f.g ≤ g.g,
+    le_refl := λ f, le_refl _,
+    le_trans := λ f g h fg gh, le_trans fg gh,
+    le_antisymm := begin intros f g fg gf, cases f, cases g,
+        tactic.congr, apply le_antisymm; assumption end
 }
 
-#print "foo"
-
-
-set_option pp.proofs true
--- set_option pp.all true
-lemma ex_max : ∃ m : pif α β, ∀ a, a ≥ m → a = m :=
+lemma ex_max (α β : Type u) : ∃ m : pif α β, ∀ a ≥ m, a = m :=
 zorn.zorn_partial_order
 begin
 intros c hc,
-let d := λ a : α, ∃ p : pif α β, p ∈ c ∧ a ∈ p.d,
-let f : subtype d → β := λ ⟨a, ha⟩,
-    (classical.some ha).f ⟨a, (classical.some_spec ha).right⟩,
-have finj: injective f, {intros a b heq,
-    cases a with a ha, cases b with b hb,
-    revert f, simp,
-    generalize: (classical.some_spec ha).right = had,
-    generalize: (classical.some_spec hb).right = hbd,
-    revert had hbd,
-    generalize hsa: classical.some ha = sa,
-    generalize hsb: classical.some hb = sb,
-    have hcab := hc sa _ sb _,
-    {cases sa with da fa fainj, cases sb with db fb fbinj,
-    dsimp, intros had hbd heq,
-    simp [has_le.le, preorder.le, partial_order.le] at hcab,
-    cases hcab with hcab hcab,
-    { by_cases da ⊆ db; simp [h] at hcab; try {contradiction},
-      have: (⟨a, h had⟩ : subtype db) = ⟨b, hbd⟩,
-      apply fbinj, transitivity,
-      apply (hcab _ _).symm; assumption, assumption,
-      injection this, cc,
-    },
-    { by_cases db ⊆ da; simp [h] at hcab; try {contradiction},
-      have: (⟨a, had⟩ : subtype da) = ⟨b, h hbd⟩,
-      apply fainj, transitivity, assumption,
-      apply (hcab _ _); assumption,
-      injection this, cc,
-    }},
-    {rw ← hsa, apply (classical.some_spec ha).left},
-    {rw ← hsb, apply (classical.some_spec hb).left},
+let g : α → β → Prop := λ a b, ∃ p ∈ c, pif.g p a b,
+have gpfn : partial_fun g, {
+    intros a b1 b2 hb1 hb2,
+    cases hb1 with p1 hp1, cases hp1 with hp1 hg1,
+    cases hb2 with p2 hp2, cases hp2 with hp2 hg2,
+    cases hc p1 hp1 p2 hp2 with hle hle,
+    {apply p2.pfn, apply hle, assumption, assumption},
+    {apply p1.pfn, assumption, apply hle, assumption}
 },
-refine ⟨⟨d, f, finj⟩, _⟩,
-intro a, have hc := hc a, cases a with da fa fainj, intro hac,
-have hdad: da ⊆ d, {intros a hda, refine ⟨_, hac, hda⟩},
-simp [hdad, has_le.le, preorder.le, partial_order.le],
-intros a hda,
-revert f, simp, intros finj,
-generalize: ((iff_true_intro hdad).mpr true.intro hda) = had,
-cases classical.some_spec had with hadc,
-cases hc hac (classical.some had) hadc,
-{cases classical.some had,
- by_cases da ⊆ d_1; simp [h, has_le.le, preorder.le, partial_order.le, pif.le] at a_2,
- apply a_2, cases a_2},
-{cases classical.some had,
- by_cases d_1 ⊆ da; simp [h, has_le.le, preorder.le, partial_order.le, pif.le] at a_2,
- apply a_2, cases a_2},
+have ginj : set.graph.injective g, {
+    intros a1 a2 b b2 hab1 hab2 hbeq, cases hbeq, clear hbeq,
+    cases hab1 with p1 hp1, cases hp1 with hp1 hg1,
+    cases hab2 with p2 hp2, cases hp2 with hp2 hg2,
+    cases hc p1 hp1 p2 hp2 with hle hle,
+    {apply p2.inj, apply hle, assumption, assumption, refl},
+    {apply p1.inj, assumption, apply hle, assumption, refl}
+},
+let ub : pif α β := ⟨g, gpfn, ginj⟩,
+refine ⟨ub, _⟩,
+intros p hp a b hpab,
+exact ⟨p, hp, hpab⟩,
 end
 
+local attribute [instance] classical.prop_decidable
 
+lemma comp (α β : Type u) : α ≼ β ∨ β ≼ α :=
+let ⟨m, hm⟩ := ex_max α β in
+let minv := λ b a, m.g a b in
+if htot : set.graph.total m.g then
+    or.inl ⟨λ a, set.graph.apply m.g a (htot _), begin
+        intros a1 a2 heq,
+        apply m.inj,
+        {apply apply_spec, apply htot},
+        {apply apply_spec, apply htot},
+        simp * at *,
+    end⟩
+else
+    have hinvtot: set.graph.total minv, begin
+        cases exists_not_of_not_forall htot with a ha, simp at ha,
+        intro b, by_contra hb,
+        let g' := λ a' b', m.g a' b' ∨ (a' = a ∧ b' = b),
+        have g'pfn : set.graph.partial_fun g', {
+            intros a1 b1 b2 h1 h2,
+            revert g', by_cases a1 = a; simp [h],
+            {have: ∀ b, ¬m.g a b, {intros b h, apply ha, existsi b, assumption}, simp [*], cc},
+            {intros, apply m.pfn, assumption, assumption},
+        },
+        have g'inj : set.graph.injective g', {
+            intros a1 a2 b1 b2 h1 h2 heq, cases heq, clear heq,
+            revert g', by_cases b1 = b; simp [h],
+            {have: ∀ a, ¬m.g a b, {intros a h, apply hb, existsi a, assumption}, simp [*], cc},
+            {intros, apply m.inj, assumption, assumption, refl},
+        },
+        let m' : pif α β := ⟨g', g'pfn, g'inj⟩,
+        have: m ≤ m', {intros a' b', revert g', simp, intros g'pfn g'inj, simp, intro h, simp [h] },
+        have hmm' : m' = m := hm m' this,
+        have: a ∈ dom m'.g, {existsi b, revert g', simp, intros, simp},
+        have: a ∉ dom m'.g, {rw hmm', assumption},
+        contradiction
+    end,
+    or.inr ⟨λ a, set.graph.apply minv a (hinvtot _), begin
+        intros a1 a2 heq, simp at heq,
+        apply m.pfn,
+        {change minv a1 _, apply apply_spec, apply hinvtot},
+        {rw heq, change minv a2 _, apply apply_spec},
+    end⟩
 
-
-#check zorn.zorn_partial_order
-
-end
 end set.comparable
 
 namespace set
@@ -307,10 +361,15 @@ namespace set
 { r := (≅),
   iseqv := ⟨@equinumerous.refl, @equinumerous.symm, @equinumerous.trans⟩ }
 
+@[simp] lemma equinumerous_of_setoid (α β : Type u) : (α ≈ β) = (α ≅ β) :=
+rfl
+
 def cardinality : Type (u+1) :=
 quotient equinumerosity_setoid
 
-def card (α : Type u) : cardinality := ⟦α⟧
+@[reducible] def card_core (α : Type u) : cardinality.{u} := ⟦α⟧
+local prefix `#`:100 := card_core
+def card (α : Type v) : cardinality.{max v u} := # ulift α
 
 namespace cardinality
 
@@ -320,12 +379,12 @@ quotient.lift_on₂ a b (≼) begin
     try { assumption <|> `[apply equinumerous.symm; assumption] }
 end
 
-protected def has_le : has_le cardinality := ⟨cardinality.le⟩
-local attribute [instance] cardinality.has_le
-
 instance : linear_order cardinality.{u} := {
     le := cardinality.le,
-    le_refl := quotient.ind begin intro a, apply dominated_by_refl end,
+    le_refl := begin
+        refine quotient.ind _, intro a,
+        apply dominated_by_refl
+    end,
     le_trans := begin
         refine quotient.ind _, intro a,
         refine quotient.ind _, intro b,
@@ -339,7 +398,145 @@ instance : linear_order cardinality.{u} := {
         apply quotient.sound,
         apply cantor_schroeder_bernstein; assumption
     end,
-    le_total := _,
+    le_total := begin
+        refine quotient.ind _, intro a,
+        refine quotient.ind _, intro b,
+        apply set.comparable.comp
+    end,
+}
+
+def aleph0 : cardinality.{u} := card ℕ
+
+instance: has_zero cardinality.{u} := ⟨card empty⟩
+instance: has_one cardinality.{u} := ⟨card unit⟩
+
+lemma zero_card_empty : 0 = card empty := rfl
+lemma one_card_unit : 1 = card unit := rfl
+
+lemma le_iff_dom (α β : Type u) : #α ≤ #β ↔ α ≼ β :=
+iff.refl _
+
+lemma lt_iff_not_dom (α β : Type u) : #α < #β ↔ ¬ β ≼ α :=
+by simp [lt_iff_not_ge, ge, le_iff_dom]
+
+lemma eq_iff_equinumerous (α β : Type u) : #α = #β ↔ α ≅ β :=
+begin
+simp [le_antisymm_iff], split; intro h,
+{cases h, apply cantor_schroeder_bernstein; apply (le_iff_dom _ _).mp; assumption, },
+{split; apply (le_iff_dom _ _).mpr; apply equinumerous.dominates, assumption, apply equinumerous.symm; assumption}
+end
+
+lemma eq_of_equinumerous (α β : Type u) : α ≅ β → #α = #β :=
+(eq_iff_equinumerous _ _).mpr
+
+lemma lt_of_not_dom {α β : Type u} : ¬ β ≼ α → #α < #β :=
+(lt_iff_not_dom _ _).mpr
+
+protected lemma zero_lt_one : 0 < (1 : cardinality) :=
+lt_of_not_dom (λ ⟨f, _⟩, empty.rec _ (f (ulift.up ())).down)
+
+@[elab_as_eliminator]
+protected lemma ind {β : cardinality.{u} → Prop} : (∀ a, β #a) → ∀ c, β c :=
+quotient.ind
+
+protected def add (a b : cardinality.{u}) : cardinality.{u} :=
+quotient.lift_on₂ a b (λ a b, card.{u u} (a ⊕ b)) begin
+simp, intros, apply eq_of_equinumerous, simp,
+apply equinumerous.congr_sum; assumption,
+end
+instance: has_add cardinality.{u} := ⟨cardinality.add⟩
+
+protected lemma add_zero (a : cardinality.{u}) : a + 0 = a :=
+begin
+revert a, refine cardinality.ind _, intro a,
+apply eq_of_equinumerous, simp,
+end
+
+protected lemma add_assoc (a b c : cardinality.{u}) : (a + b) + c = a + (b + c) :=
+begin
+revert a b c,
+refine cardinality.ind _, intro a,
+refine cardinality.ind _, intro b,
+refine cardinality.ind _, intro c,
+apply eq_of_equinumerous, simp, apply equinumerous.sum_assoc
+end
+
+protected lemma add_comm (a b : cardinality.{u}) : a + b = b + a :=
+begin
+revert a b,
+refine cardinality.ind _, intro a,
+refine cardinality.ind _, intro b,
+apply eq_of_equinumerous, simp,
+apply equinumerous.sum_comm
+end
+
+protected def mul (a b : cardinality.{u}) : cardinality.{u} :=
+quotient.lift_on₂ a b (λ a b, card.{u u} (a × b)) begin
+simp, intros, apply eq_of_equinumerous, simp, apply equinumerous.congr_prod; assumption,
+end
+instance: has_mul cardinality.{u} := ⟨cardinality.mul⟩
+
+lemma mul_card (a b) : card a * card b = card (a × b) :=
+by apply eq_of_equinumerous; simp
+
+protected lemma mul_zero (a : cardinality.{u}) : a * 0 = 0 :=
+begin
+revert a, refine cardinality.ind _, intro a,
+simp [zero_card_empty],
+apply eq_of_equinumerous, simp
+end
+
+protected lemma mul_one (a : cardinality.{u}) : a * 1 = a :=
+begin
+revert a, refine cardinality.ind _, intro a,
+apply eq_of_equinumerous, simp
+end
+
+protected lemma mul_comm (a b : cardinality.{u}) : a * b = b * a :=
+begin
+revert a b,
+refine cardinality.ind _, intro a,
+refine cardinality.ind _, intro b,
+apply eq_of_equinumerous, simp, apply equinumerous.prod_comm
+end
+
+protected lemma mul_assoc (a b c : cardinality.{u}) : (a * b) * c = a * (b * c) :=
+begin
+revert a b c,
+refine cardinality.ind _, intro a,
+refine cardinality.ind _, intro b,
+refine cardinality.ind _, intro c,
+apply eq_of_equinumerous, simp, apply equinumerous.prod_assoc
+end
+
+protected lemma left_distrib (a b c : cardinality.{u}) : a * (b + c) = a * b + a * c :=
+begin
+revert a b c,
+refine cardinality.ind _, intro a,
+refine cardinality.ind _, intro b,
+refine cardinality.ind _, intro c,
+apply eq_of_equinumerous, simp, apply prod_sum_distrib
+end
+
+instance: comm_semiring cardinality.{u} := {
+    zero := 0,
+    add := (+),
+    add_assoc := cardinality.add_assoc,
+    add_comm := cardinality.add_comm,
+    add_zero := cardinality.add_zero,
+    zero_add := by intro; rw [cardinality.add_comm, cardinality.add_zero],
+
+    one := 1,
+    mul := (*),
+    mul_one := cardinality.mul_one,
+    one_mul := by intro; rw [cardinality.mul_comm, cardinality.mul_one],
+    mul_assoc := cardinality.mul_assoc,
+    mul_comm := cardinality.mul_comm,
+    mul_zero := cardinality.mul_zero,
+    zero_mul := by intro; rw [cardinality.mul_comm, cardinality.mul_zero],
+
+    left_distrib := cardinality.left_distrib,
+    right_distrib := by intros; simp [cardinality.mul_comm, cardinality.left_distrib],
 }
 
 end cardinality

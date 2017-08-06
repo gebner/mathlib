@@ -1,4 +1,5 @@
 import algebra.order
+import algebra.lattice.complete_lattice
 
 universes u v
 
@@ -7,13 +8,6 @@ variables {α : Type u} {β : α → Type v}
 
 def graph (f : ∀ a, β a) (a : α) (b : β a) : Prop :=
 f a = b
-
-instance : partial_order (∀ a, β a → Prop) := {
-    le := λ f g, ∀ a b, f a b → g a b,
-    le_refl := λ f a b, id,
-    le_trans := λ f g h fg gh a b, gh _ _ ∘ fg _ _,
-    le_antisymm := λ f g fg gf, funext $ λ a, funext $ λ b, propext ⟨fg _ _, gf _ _⟩,
-}
 
 namespace graph
 
@@ -26,8 +20,11 @@ lemma graph_pfn (f : ∀ a, β a) : partial_fun (graph f)
 def injective (g : ∀ a, β a → Prop) :=
 ∀ a1 a2 b1 b2, g a1 b1 → g a2 b2 → b1 == b2 → a1 = a2
 
-def dom (g : ∀ a, β a → Prop) : set α | a :=
-∃ b, g a b
+def surjective (g : ∀ a, β a → Prop) :=
+∀ a, ∃ b, g a b
+
+def dom (g : ∀ a, β a → Prop) : set α
+| a := ∃ b, g a b
 
 def total (g : ∀ a, β a → Prop) :=
 ∀ a, a ∈ dom g
