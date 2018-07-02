@@ -6,8 +6,7 @@ Author: Leonardo de Moura, Mario Carneiro
 Type class for encodable Types.
 Note that every encodable Type is countable.
 -/
-import data.fintype data.list data.list.perm data.list.sort
-       data.equiv data.nat.basic order.order_iso
+import data.equiv.nat
 open option list nat function
 
 /-- An encodable type is a "constructively countable" type. This is where
@@ -180,81 +179,6 @@ by simp; cases decode α n.unpair.1; simp [option.bind];
 
 end prod
 
-section list
-variable [encodable α]
-
-def encode_list : list α → ℕ
-| []     := 0
-| (a::l) := succ (mkpair (encode a) (encode_list l))
-
-def decode_list : ℕ → option (list α)
-| 0        := some []
-| (succ v) := match unpair v, unpair_le_right v with
-  | (v₁, v₂), h :=
-    have v₂ < succ v, from lt_succ_of_le h,
-    (::) <$> decode α v₁ <*> decode_list v₂
-  end
-
-instance list : encodable (list α) :=
-⟨encode_list, decode_list, λ l,
-  by induction l with a l IH; simp [encode_list, decode_list, unpair_mkpair, encodek, *]⟩
-
-@[simp] theorem encode_list_nil : encode (@nil α) = 0 := rfl
-@[simp] theorem encode_list_cons (a : α) (l : list α) :
-  encode (a :: l) = succ (mkpair (encode a) (encode l)) := rfl
-
-@[simp] theorem decode_list_zero : decode (list α) 0 = some [] := rfl
-
-@[simp] theorem decode_list_succ (v : ℕ) :
-  decode (list α) (succ v) =
-  (::) <$> decode α v.unpair.1 <*> decode (list α) v.unpair.2 :=
-show decode_list (succ v) = _, begin
-  cases e : unpair v with v₁ v₂,
-  simp [decode_list, e], refl
-end
-
-theorem length_le_encode : ∀ (l : list α), length l ≤ encode l
-| [] := zero_le _
-| (a :: l) := succ_le_succ $
-  le_trans (length_le_encode l) (le_mkpair_right _ _)
-
-end list
-
-section finset
-variables [encodable α]
-
-private def enle : α → α → Prop := encode ⁻¹'o (≤)
-
-private lemma enle.is_linear_order : is_linear_order α enle :=
-(order_embedding.preimage ⟨encode, encode_injective⟩ (≤)).is_linear_order
-
-private def decidable_enle (a b : α) : decidable (enle a b) :=
-by unfold enle order.preimage; apply_instance
-
-local attribute [instance] enle.is_linear_order decidable_enle
-
-def encode_multiset (s : multiset α) : ℕ :=
-encode (s.sort enle)
-
-def decode_multiset (n : ℕ) : option (multiset α) :=
-coe <$> decode (list α) n
-
-instance multiset : encodable (multiset α) :=
-⟨encode_multiset, decode_multiset,
- λ s, by simp [encode_multiset, decode_multiset, encodek]⟩
-
-end finset
-
-def encodable_of_list [decidable_eq α] (l : list α) (H : ∀ x, x ∈ l) : encodable α :=
-⟨λ a, index_of a l, l.nth, λ a, index_of_nth (H _)⟩
-
-def trunc_encodable_of_fintype (α : Type*) [decidable_eq α] [fintype α] : trunc (encodable α) :=
-@@quot.rec_on_subsingleton _
-  (λ s : multiset α, (∀ x:α, x ∈ s) → trunc (encodable α)) _
-  finset.univ.1
-  (λ l H, trunc.mk $ encodable_of_list l H)
-  finset.mem_univ
-
 section subtype
 open subtype decidable
 variable {P : α → Prop}
@@ -267,23 +191,19 @@ def encode_subtype : {a : α // P a} → nat
 
 include decP
 def decode_subtype (v : nat) : option {a : α // P a} :=
-match decode α v with
-| some a := if h : P a then some ⟨a, h⟩ else none
-| none   := none
-end
+(decode α v).bind $ λ a,
+if h : P a then some ⟨a, h⟩ else none
 
 instance subtype : encodable {a : α // P a} :=
 ⟨encode_subtype, decode_subtype,
  λ ⟨v, h⟩, by simp [encode_subtype, decode_subtype, encodek, h]⟩
 end subtype
 
+instance fin (n) : encodable (fin n) :=
+of_equiv _ (equiv.fin_equiv_subtype _)
+
 instance int : encodable ℤ :=
 of_equiv _ equiv.int_equiv_nat
-
-instance finset [encodable α] : encodable (finset α) :=
-by haveI := decidable_eq_of_encodable α; exact
- of_equiv {s : multiset α // s.nodup}
-  ⟨λ ⟨a, b⟩, ⟨a, b⟩, λ⟨a, b⟩, ⟨a, b⟩, λ ⟨a, b⟩, rfl, λ⟨a, b⟩, rfl⟩
 
 instance ulift [encodable α] : encodable (ulift α) :=
 of_equiv _ equiv.ulift

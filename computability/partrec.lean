@@ -8,7 +8,7 @@ recursive functions, but now all functions are partial, implemented
 using the `roption` monad, and there is an additional operation, called
 μ-recursion, which performs unbounded minimization.
 -/
-import data.computability.primrec data.pfun
+import computability.primrec data.pfun
 
 open encodable denumerable roption
 
@@ -284,6 +284,17 @@ theorem list_append : computable₂ ((++) : list α → list α → list α) := 
 theorem list_concat : computable₂ (λ l (a:α), l ++ [a]) := primrec.list_concat.to_comp
 theorem list_length : computable (@list.length α) := primrec.list_length.to_comp
 
+theorem vector_cons {n} : computable₂ (@vector.cons α n) := primrec.vector_cons.to_comp
+theorem vector_to_list {n} : computable (@vector.to_list α n) := primrec.vector_to_list.to_comp
+theorem vector_length {n} : computable (@vector.length α n) := primrec.vector_length.to_comp
+theorem vector_head {n} : computable (@vector.head α n) := primrec.vector_head.to_comp
+theorem vector_tail {n} : computable (@vector.tail α n) := primrec.vector_tail.to_comp
+theorem vector_nth {n} : computable₂ (@vector.nth α n) := primrec.vector_nth.to_comp
+theorem vector_nth' {n} : computable (@vector.nth α n) := primrec.vector_nth'.to_comp
+theorem vector_of_fn' {n} : computable (@vector.of_fn α n) := primrec.vector_of_fn'.to_comp
+
+theorem fin_app {n} : computable₂ (@id (fin n → σ)) := primrec.fin_app.to_comp
+
 protected theorem encode : computable (@encode α _) :=
 primrec.encode.to_comp
 
@@ -349,7 +360,7 @@ theorem nat_elim
   simp [option.map, option.bind, encodek]
 end
 
-theorem comp {f : β →. σ} {g : α → β} 
+theorem comp {f : β →. σ} {g : α → β}
   (hf : partrec f) (hg : computable g) : partrec (λ a, f (g a)) :=
 (hf.comp hg).of_eq $
 λ n, by simp; cases e : decode α n with a;
@@ -431,7 +442,7 @@ theorem rfind {p : α → ℕ →. bool} (hp : partrec₂ p) :
   cases e : decode α n with a;
     simp [e, option.bind, option.map, nat.rfind_zero_none, map_id'],
   congr, funext n,
-  simp [map_map, (∘)],
+  simp [roption.map_map, (∘)],
   apply map_id' (λ b, _),
   cases b; refl
 end
@@ -463,7 +474,18 @@ theorem bind_decode2_iff {f : α →. σ} : partrec f ↔
 λ h, map_encode_iff.1 $ by simpa [encodek2]
   using (nat_iff.2 h).comp (@computable.encode α _)⟩
 
+theorem vector_m_of_fn : ∀ {n} {f : fin n → α →. σ}, (∀ i, partrec (f i)) →
+  partrec (λ (a : α), vector.m_of_fn (λ i, f i a))
+| 0     f hf := const _
+| (n+1) f hf := by simp [vector.m_of_fn]; exact
+  (hf 0).bind (partrec.bind ((vector_m_of_fn (λ i, hf i.succ)).comp fst)
+    (primrec.vector_cons.to_comp.comp (snd.comp fst) snd))
+
 end partrec
+
+@[simp] theorem vector.m_of_fn_roption_some {α n} : ∀ (f : fin n → α),
+  vector.m_of_fn (λ i, roption.some (f i)) = roption.some (vector.of_fn f) :=
+vector.m_of_fn_pure
 
 namespace computable
 variables {α : Type*} {β : Type*} {γ : Type*} {σ : Type*}
@@ -561,6 +583,16 @@ option_some_iff.1 $
   simp [IH, H, list.range_concat, option.bind]
 end
 
+theorem list_of_fn : ∀ {n} {f : fin n → α → σ},
+  (∀ i, computable (f i)) → computable (λ a, list.of_fn (λ i, f i a))
+| 0     f hf := const []
+| (n+1) f hf := by simp [list.of_fn_succ]; exact
+  list_cons.comp (hf 0) (list_of_fn (λ i, hf i.succ))
+
+theorem vector_of_fn {n} {f : fin n → α → σ}
+  (hf : ∀ i, computable (f i)) : computable (λ a, vector.of_fn (λ i, f i a)) :=
+(partrec.vector_m_of_fn hf).of_eq $ λ a, by simp
+
 end computable
 
 namespace partrec
@@ -578,7 +610,7 @@ theorem option_some_iff {f : α →. σ} :
 theorem option_cases_right {o : α → option β} {f : α → σ} {g : α → β →. σ}
   (ho : computable o) (hf : computable f) (hg : partrec₂ g) :
   @partrec _ σ _ _ (λ a, option.cases_on (o a) (some (f a)) (g a)) :=
-have partrec (λ (a : α), nat.cases (roption.some (f a)) 
+have partrec (λ (a : α), nat.cases (roption.some (f a))
   (λ n, roption.bind (decode β n) (g a)) (encode (o a))) :=
 nat_cases_right (encode_iff.2 ho) hf.part $
   ((@computable.decode β _).comp snd).of_option.bind

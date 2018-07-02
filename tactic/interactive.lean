@@ -3,7 +3,8 @@ Copyright (c) 2017 Mario Carneiro. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Mario Carneiro
 -/
-import data.dlist tactic.basic tactic.rcases tactic.generalize_proofs
+import data.dlist data.dlist.basic data.prod category.basic
+  tactic.basic tactic.rcases tactic.generalize_proofs
   tactic.split_ifs meta.expr
 
 open lean
@@ -224,6 +225,9 @@ do h ← match h with
 meta def exactI (q : parse texpr) : tactic unit :=
 reset_instance_cache >> exact q
 
+meta def symm_apply (e : expr) (cfg : apply_cfg := {}) : tactic (list (name × expr)) :=
+tactic.apply e cfg <|> (symmetry >> tactic.apply e cfg)
+
 /--
   `apply_assumption` looks for an assumption of the form `... → ∀ _, ... → head`
   where `head` matches the current goal.
@@ -242,14 +246,10 @@ meta def apply_assumption
   (asms : option (list expr) := none)
   (tac : tactic unit := return ()) : tactic unit :=
 do { ctx ← asms.to_monad <|> local_context,
-     t   ← target,
-     hs   ← find_matching_head t ctx,
-     hs.any_of (λ H, () <$ tactic.apply H ; tac) } <|>
+     ctx.any_of (λ H, () <$ symm_apply H ; tac) } <|>
 do { exfalso,
      ctx ← asms.to_monad <|> local_context,
-     t   ← target,
-     hs   ← find_matching_head t ctx,
-     hs.any_of (λ H, () <$ tactic.apply H ; tac) }
+     ctx.any_of (λ H, () <$ symm_apply H ; tac) }
 <|> fail "assumption tactic failed"
 
 open nat
@@ -314,7 +314,7 @@ meta def extensional_attribute : user_attribute :=
 { name := `extensionality,
   descr := "lemmas usable by `ext` tactic" }
 
-attribute [extensionality] funext array.ext
+attribute [extensionality] _root_.funext array.ext prod.ext
 
 /--
   `ext1 id` selects and apply one extensionality lemma (with attribute
@@ -325,7 +325,12 @@ attribute [extensionality] funext array.ext
 meta def ext1 (x : parse ident_ ?) : tactic unit :=
 do ls ← attribute.get_instances `extensionality,
    ls.any_of (λ l, applyc l) <|> fail "no applicable extensionality rule found",
-   interactive.intro x
+   try ( interactive.intro x )
+
+meta def ext_arg :=
+prod.mk <$> (some <$> small_nat)
+        <*> (tk "with" *> ident_* <|> pure [])
+<|> prod.mk none <$> (ident_*)
 
 /--
   - `ext` applies as many extensionality lemmas as possible;
@@ -351,10 +356,13 @@ do ls ← attribute.get_instances `extensionality,
   ```
 
   by applying functional extensionality and set extensionality.
+
+  A maximum depth can be provided with `ext 3 with x y z`.
   -/
-meta def ext : parse ident_ * → tactic unit
- | [] := repeat (ext1 none)
- | xs := xs.mmap' (ext1 ∘ some)
+meta def ext : parse ext_arg → tactic unit
+ | (some n, []) := ext1 none >> iterate_at_most (pred n) (ext1 none)
+ | (none,   []) := ext1 none >> repeat (ext1 none)
+ | (n, xs) := tactic.ext xs n
 
 private meta def generalize_arg_p_aux : pexpr → parser (pexpr × name)
 | (app (app (macro _ [const `eq _ ]) h) (local_const x _ _ _)) := pure (h, x)
@@ -425,6 +433,120 @@ do tgt : expr ← target,
      | (app (lam _ _ _ (var 0)) e') := some e'
      | _ := none
      end)
+
+meta def source_fields (missing : list (name × name)) (e : pexpr) : tactic (list (name × pexpr)) :=
+do e ← to_expr e,
+   t ← infer_type e,
+   let struct_n : name := t.get_app_fn.const_name,
+   exp_fields ← (∩ missing) <$> expanded_field_list struct_n,
+   exp_fields.mmap $ λ ⟨p,n⟩,
+     (prod.mk n ∘ to_pexpr) <$> mk_mapp (n.update_prefix p) [none,some e]
+
+meta def collect_struct' : pexpr → state_t (list $ expr×structure_instance_info) tactic pexpr | e :=
+do some str ← pure (e.get_structure_instance_info)
+       | e.traverse collect_struct',
+   v ← monad_lift mk_mvar,
+   modify (list.cons (v,str)),
+   pure $ to_pexpr v
+
+meta def collect_struct (e : pexpr) : tactic $ pexpr × list (expr×structure_instance_info) :=
+prod.map id list.reverse <$> (collect_struct' e).run []
+
+meta def refine_one (str : structure_instance_info) :
+  tactic $ list (expr×structure_instance_info) :=
+do    tgt ← target,
+      let struct_n : name := tgt.get_app_fn.const_name,
+      exp_fields ← expanded_field_list struct_n,
+      let missing_f := exp_fields.filter (λ f, (f.2 : name) ∉ str.field_names),
+      (src_field_names,src_field_vals) ← (@list.unzip name _ ∘ list.join) <$> str.sources.mmap (source_fields missing_f),
+      let provided  := exp_fields.filter (λ f, (f.2 : name) ∈ str.field_names),
+      let missing_f' := missing_f.filter (λ x, x.2 ∉ src_field_names),
+      vs ← mk_mvar_list missing_f'.length,
+      (field_values,new_goals) ← list.unzip <$> (str.field_values.mmap collect_struct : tactic _),
+      e' ← to_expr $ pexpr.mk_structure_instance
+          { struct := some struct_n
+          , field_names  := str.field_names  ++ missing_f'.map prod.snd ++ src_field_names
+          , field_values := field_values ++ vs.map to_pexpr         ++ src_field_vals },
+      tactic.exact e',
+      gs ← with_enable_tags (
+        mmap₂ (λ (n : name × name) v, do
+           set_goals [v],
+           try (interactive.unfold (provided.map $ λ ⟨s,f⟩, f.update_prefix s) (loc.ns [none])),
+           apply_auto_param
+             <|> apply_opt_param
+             <|> (set_main_tag [`_field,n.2,n.1]),
+           get_goals)
+        missing_f' vs),
+      set_goals gs.join,
+      return new_goals.join
+
+meta def refine_recursively : expr × structure_instance_info → tactic (list expr) | (e,str) :=
+do set_goals [e],
+   rs ← refine_one str,
+   gs ← get_goals,
+   gs' ← rs.mmap refine_recursively,
+   return $ gs'.join ++ gs
+
+
+/-- `refine_struct { .. }` acts like `refine` but works only with structure instance
+    literals. It creates a goal for each missing field and tags it with the name of the
+    field so that `have_field` can be used to generically refer to the field currently
+    being refined.
+
+    As an example, we can use `refine_struct` to automate the construction semigroup
+    instances:
+    ```
+    refine_struct ( { .. } : semigroup α ),
+    -- case semigroup, mul
+    -- α : Type u,
+    -- ⊢ α → α → α
+
+    -- case semigroup, mul_assoc
+    -- α : Type u,
+    -- ⊢ ∀ (a b c : α), a * b * c = a * (b * c)
+    ```
+-/
+meta def refine_struct : parse texpr → tactic unit | e :=
+do (x,xs) ← collect_struct e,
+   refine x,
+   gs ← get_goals,
+   xs' ← xs.mmap refine_recursively,
+   set_goals (xs'.join ++ gs)
+
+meta def guard_tags (tags : parse ident*) : tactic unit :=
+do (t : list name) ← get_main_tag,
+   guard (t = tags)
+
+meta def get_current_field : tactic name :=
+do [_,field,str] ← get_main_tag,
+   expr.const_name <$> resolve_name (field.update_prefix str)
+
+/-- `have_field`, used after `refine_struct _` poses `field` as a local constant
+    with the type of the field of the current goal:
+
+    ```
+    refine_struct ({ .. } : semigroup α),
+    { have_field, ... },
+    { have_field, ... },
+    ```
+    behaves like
+    ```
+    refine_struct ({ .. } : semigroup α),
+    { have field := @semigroup.mul, ... },
+    { have field := @semigroup.mul_assoc, ... },
+    ```
+-/
+meta def have_field : tactic unit :=
+propagate_tags $
+get_current_field
+>>= mk_const
+>>= note `field none
+>>  return ()
+
+/-- `apply_field` functions as `have_field, apply field, clear field` -/
+meta def apply_field : tactic unit :=
+propagate_tags $
+get_current_field >>= applyc
 
 end interactive
 end tactic

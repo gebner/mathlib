@@ -5,8 +5,10 @@ Author: Mario Carneiro
 
 Multisets.
 -/
-import logic.function data.list.basic data.list.perm data.list.sort order.boolean_algebra
-       algebra.order_functions data.quot algebra.group_power algebra.ordered_group
+import logic.function order.boolean_algebra
+  data.list.basic data.list.perm data.list.sort data.quot data.string
+  algebra.order_functions algebra.group_power algebra.ordered_group
+
 open list subtype nat lattice
 
 variables {α : Type*} {β : Type*} {γ : Type*}
@@ -595,7 +597,7 @@ mem_map.2 ⟨_, h, rfl⟩
 quot.induction_on s $ λ l, mem_map_of_inj H
 
 @[simp] theorem map_map (g : β → γ) (f : α → β) (s : multiset α) : map g (map f s) = map (g ∘ f) s :=
-quot.induction_on s $ λ l, congr_arg coe $ map_map _ _ _
+quot.induction_on s $ λ l, congr_arg coe $ list.map_map _ _ _
 
 @[simp] theorem map_id (s : multiset α) : map id s = s :=
 quot.induction_on s $ λ l, congr_arg coe $ map_id _
@@ -2333,6 +2335,9 @@ quot.induction_on s $ λ l, quot.sound $ perm_merge_sort _ _
 
 end sort
 
+instance [has_repr α] : has_repr (multiset α) :=
+⟨λ s, "{" ++ string.intercalate ", " ((s.map repr).sort (≤)) ++ "}"⟩
+
 section sections
 
 def sections (s : multiset (multiset α)) : multiset (multiset α) :=
@@ -2379,7 +2384,7 @@ multiset.induction_on s (by simp)
 end sections
 
 section pi
-variables [decidable_eq α] {δ : α → Type*} [∀a, decidable_eq (δ a)]
+variables [decidable_eq α] {δ : α → Type*}
 open function
 
 def pi.cons (m : multiset α) (a : α) (b : δ a) (f : Πa∈m, δ a) : Πa'∈a::m, δ a' :=
