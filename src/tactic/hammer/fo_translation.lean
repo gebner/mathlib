@@ -355,7 +355,8 @@ meta def close_under_instances (ns : list name) : tactic (list name) := do
 let ns : rb_set name := rb_map.set_of_list ns,
 e ← get_env,
 ds ← e.get_trusted_decls.mfilter (λ d, is_instance d.to_name),
-let ds := ds.filter (λ d, ∀ c ∈ d.type.constants, ns.contains c),
+il ← mk_ignore_args,
+let ds := ds.filter (λ d, ∀ c ∈ (non_ignored_consts il d.type mk_name_set).to_list, ns.contains c),
 -- trace $ ds.map (λ d, d.to_name),
 pure $ rb_set.to_list $ ds.foldl (λ ns d, ns.insert d.to_name) ns
 
@@ -408,6 +409,7 @@ let axs := goal.constants.filter is_good_const ++ axs,
 axs ← state_t.lift $ close_under_references axs,
 axs ← state_t.lift $ close_under_instances axs,
 axs ← state_t.lift $ close_under_references axs,
+state_t.lift $ trace $ (axs.map name.to_string).qsort (λ a b, a < b),
 axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),
 add_instance_defeqs axs,
 goal_is_prop ← state_t.lift $ tactic.is_prop goal,
