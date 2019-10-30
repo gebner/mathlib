@@ -484,11 +484,11 @@ namespace interactive
 
 open interactive interactive.types lean.parser
 
-meta def find_lemmas_via_vampire (axs : parse $ optional $ list_of ident) : tactic unit := do
+meta def find_lemmas_via_vampire (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
 goal ← reverted_target,
 lems ←
   match axs with
-  | none := hammer.find_lemmas_via_vampire goal
+  | none := hammer.find_lemmas_via_vampire goal max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
     timetac "Vampire took" $

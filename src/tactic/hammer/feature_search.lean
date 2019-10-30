@@ -15,6 +15,11 @@ def list.zip_extend {α β} (a : α) : list α → list β → list (α × β)
 | [] (b::bs) := (a,b) :: list.zip_extend [] bs
 | _ [] := []
 
+@[inline]
+meta def name.has_suffix (s : string) : name → bool
+| (name.mk_string s' _) := s = s'
+| _ := false
+
 namespace hammer
 
 open native tactic
@@ -68,6 +73,12 @@ rb_set feature
 private meta def ignored_consts : name_set :=
 name_set.of_list [ ``Exists, ``and, ``or, ``iff, ``eq, ``heq, name.anonymous ]
 
+private meta def sunfold_name := "_sunfold"
+private meta def main_name := "_main"
+
+meta def is_ignored_const (n : name) : bool :=
+n.has_suffix sunfold_name ∨ n.has_suffix main_name ∨ ignored_consts.contains n
+
 meta def head_sym_of (e : expr) : name :=
 match e.get_app_fn with
 | expr.const n _ := n
@@ -85,7 +96,7 @@ meta def non_ignored_consts (il : rb_map name (list bool)) : expr → name_set �
 | (expr.local_const _ _ _ _) := id
 | (expr.macro _ es) := λ fv, es.foldl (λ fv e, non_ignored_consts e fv) fv
 | (expr.elet _ t v e) := non_ignored_consts t ∘ non_ignored_consts v ∘ non_ignored_consts e
-| (expr.const n _) := if ignored_consts.contains n then id else λ cs, cs.insert n
+| (expr.const n _) := if is_ignored_const n then id else λ cs, cs.insert n
 | e@(expr.app _ _) := λ cs,
 let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
 let cs := non_ignored_consts fn cs in
@@ -104,13 +115,13 @@ meta def features_of (il : rb_map name (list bool)) : expr → feature_vec → f
 | (expr.local_const _ _ _ _) := id
 | (expr.macro _ es) := λ fv, es.foldl (λ fv e, features_of e fv) fv
 | (expr.elet _ t v e) := features_of t ∘ features_of v ∘ features_of e
-| (expr.const n _) := if ignored_consts.contains n then id else λ fv, fv.insert (feature.c n)
+| (expr.const n _) := if is_ignored_const n then id else λ fv, fv.insert (feature.c n)
 | e@(expr.app _ _) := λ fv, let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
   let fv := features_of fn fv in
   (((il.find hs).get_or_else []).zip_extend ff as).foldl
     (λ fv ⟨i, a⟩, if i then fv else
       let hsa := head_sym_of a,
-          fv := if ignored_consts.contains hsa then fv else
+          fv := if is_ignored_const hsa then fv else
             fv.insert (feature.digr hs hsa) in
       features_of a fv)
     fv
@@ -156,6 +167,7 @@ meta def select_for_goal (g : expr) : tactic (list $ name × nat) := do
 e ← get_env,
 bl ← mk_ignore_args,
 let lems := rb_map.of_list $
+  list.filter (λ n, ¬ is_ignored_const n.1) $
   e.get_trusted_decls.map (λ d, (d.to_name, features_of_decl' bl d)),
 let dfm := df lems, let dfm_size := dfm.size,
 let goal_fv := features_of_decl' bl (declaration.thm `_goal [] g (task.pure `(true.intro))),
