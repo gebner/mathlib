@@ -138,7 +138,7 @@ let next := m.filter $ λ t, ∀ x ∈ (contained_lconsts t.local_type).keys, ¬
 next.values ++ sort_lconsts (next.fold m (λ n _ m, m.erase n))
 
 meta def mk_pi (lc : expr) (e : expr) : expr :=
-expr.pi lc.local_pp_name lc.local_binder_info lc.local_type (e.abstract_local lc.local_uniq_name)
+expr.pi lc.local_pp_name lc.local_binding_info lc.local_type (e.abstract_local lc.local_uniq_name)
 
 meta def mk_pis : list expr → expr → expr
 | (x::xs) e := mk_pi x (mk_pis xs e)
