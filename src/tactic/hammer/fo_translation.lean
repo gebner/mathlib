@@ -452,7 +452,7 @@ exec_cmd "vampire" ["-p", "tptp"] tptp
 
 end
 
-meta def filter_lemmas_via_vampire (axs : list name) (goal : expr) : tactic (list name) := do
+meta def filter_lemmas1 (axs : list name) (goal : expr) : tactic (list name) := do
 (tptp, ax_names) ← do_trans axs goal,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
@@ -463,12 +463,12 @@ tptp_out ← exec_cmd "bash" ["-c",
 let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, (ax_names.find n).to_list
 
-meta def find_lemmas_via_vampire (goal : expr) (max := 10) : tactic (list name) := do
+meta def find_lemmas1 (goal : expr) (max := 10) : tactic (list name) := do
 axs ← timetac "Premise selection took" $ select_for_goal goal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-timetac "Vampire took" $ filter_lemmas_via_vampire axs goal
+timetac "Vampire took" $ filter_lemmas1 axs goal
 
 #eval do
 let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
@@ -484,15 +484,15 @@ namespace interactive
 
 open interactive interactive.types lean.parser
 
-meta def find_lemmas_via_vampire (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+meta def find_lemmas1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
 goal ← reverted_target,
 lems ←
   match axs with
-  | none := hammer.find_lemmas_via_vampire goal max_lemmas
+  | none := hammer.find_lemmas1 goal max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
     timetac "Vampire took" $
-      hammer.filter_lemmas_via_vampire axs goal
+      hammer.filter_lemmas1 axs goal
   end,
 trace "Vampire proof uses the following lemmas:",
 lems.mmap' $ λ l, trace $ "  " ++ l.to_string,

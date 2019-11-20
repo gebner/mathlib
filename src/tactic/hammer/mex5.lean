@@ -4,4 +4,4 @@ import tactic.hammer.monomorphization data.nat.gcd data.real.basic
 set_option trace.super true
 
 example {α} (x y z : list α) : x ++ (z ++ y) = (x ++ z) ++ y :=
-by hammer_via_monom 30
+by hammer2 30

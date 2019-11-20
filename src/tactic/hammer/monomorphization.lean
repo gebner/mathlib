@@ -465,7 +465,7 @@ lems' ← monomorphize lems 2,
 (cs'', lems'') ← intern_lems lems',
 (to_tf0_file cs'' lems'').run
 
-meta def filter_lemmas_via_monom (axs : list name) : tactic (list (expr × expr)) := do
+meta def filter_lemmas2 (axs : list name) : tactic (list (expr × expr)) := do
 (tptp, ax_names) ← mk_monom_file axs,
 trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
@@ -478,13 +478,13 @@ tptp_out ← timetac "eprover-ho took" $ exec_cmd "bash" ["-c",
 let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, (ax_names.find n).to_list
 
-meta def find_lemmas_via_monom (max := 10) : tactic (list (expr × expr)) := do
+meta def find_lemmas2 (max := 10) : tactic (list (expr × expr)) := do
 axs ← timetac "Premise selection took" $ retrieve $
   revert_all >> target >>= select_for_goal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-filter_lemmas_via_monom axs
+filter_lemmas2 axs
 
 namespace mysuper
 open super
@@ -559,14 +559,14 @@ namespace tactic
 namespace interactive
 open interactive interactive.types lean.parser
 
-meta def find_lemmas_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
+meta def find_lemmas2 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
 lems ←
   match axs with
-  | none := hammer.find_lemmas_via_monom max_lemmas
+  | none := hammer.find_lemmas2 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
     timetac "eprover-ho took" $
-      hammer.filter_lemmas_via_monom axs
+      hammer.filter_lemmas2 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",
 lems.mmap' (λ ⟨l, t⟩, do
@@ -576,14 +576,14 @@ lems.mmap' (λ ⟨l, t⟩, do
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
 admit
 
-meta def hammer_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
+meta def hammer2 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
 lems ←
   match axs with
-  | none := hammer.find_lemmas_via_monom max_lemmas
+  | none := hammer.find_lemmas2 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
     timetac "eprover-ho took" $
-      hammer.filter_lemmas_via_monom axs
+      hammer.filter_lemmas2 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",
 lems.mmap' (λ ⟨l, t⟩, do
@@ -598,4 +598,4 @@ end tactic
 
 -- set_option trace.super true
 -- example (x y : ℤ) : x + y = y + x :=
--- by hammer_via_monom [add_comm]
+-- by hammer2 [add_comm]
