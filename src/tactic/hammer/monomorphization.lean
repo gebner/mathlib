@@ -69,6 +69,15 @@ list.join <$> as.mmap (λ a, tactic.retrieve_or_else [] (tac a))
 meta def mk_lam (lc : expr) (e : expr) : expr :=
 expr.lam lc.local_pp_name lc.local_binding_info lc.local_type (e.abstract_local lc.local_uniq_name)
 
+open tactic
+
+meta def tactic.is_type (e : expr) : tactic bool := do
+e ← whnf e,
+match e with
+| (sort _) := pure tt
+| _ := pure ff
+end
+
 namespace hammer
 
 open expr tactic
@@ -99,7 +108,7 @@ meta def num_mono_args : expr → ℕ
     0
 | _ := 0
 
-#eval (num_mono_args <$> infer_type `(@has_add.add.{0})) >>= trace
+-- #eval (num_mono_args <$> infer_type `(@has_add.add.{0})) >>= trace
 
 meta def gather_constant_heads (nargs : rb_map name ℕ) : expr → list expr
 | (lam _ _ d e) := gather_constant_heads d ++ gather_constant_heads e
@@ -189,8 +198,9 @@ let lems' := lems'.dup_native,
 -- lems'.mmap infer_type >>= trace,
 pure lems'
 
-meta def monomorphize (lems : list expr) (rounds := 2) : tactic (list expr) :=
-rounds.iterate (λ lems', do lems' ← lems', monomorphization_round (lems ++ lems')) (pure [])
+meta def monomorphize (lems : list expr) (rounds := 2) : tactic (list expr) := do
+mon ← rounds.iterate (λ lems', do lems' ← lems', monomorphization_round (lems ++ lems')) (pure []),
+pure (lems ++ mon).dup_native
 
 meta structure intern_state :=
 (fresh_idx : ℕ := 0)
@@ -238,10 +248,13 @@ nargs ← intern_state.nargs <$> state_t.get,
 pure (nargs.find (get_head_name e))
 
 meta def intern_ty (lctx : list expr) : expr → intern expr
-| t@(sort _) := pure t
+| t@(sort level.zero) := pure t
 | e@(pi pp_n bi d t) :=
   if t.has_var then intern_here [] e else
   imp <$> intern_ty d <*> intern_ty t
+| `(out_param %%t) := intern_ty t
+| `(auto_param %%t _) := intern_ty t
+| `(opt_param %%t _) := intern_ty t
 | e := intern_here lctx e
 
 meta def intern_expr : list expr → expr → intern expr
@@ -249,10 +262,17 @@ meta def intern_expr : list expr → expr → intern expr
   a ← intern_expr lctx a,
   b ← intern_expr lctx b,
   state_t.lift $ mk_app ``eq [a,b]
-| lctx `(@Exists %%α %%p@(lam _ _ _ _)) := do
-  α ← intern_ty lctx α,
-  p ← intern_expr lctx p,
-  state_t.lift $ mk_mapp ``Exists [α, p]
+| lctx e@(app (app (const ``Exists ls) α) (lam pp_n bi _ p)) := do
+  a_type ← state_t.lift $ is_type α,
+  a_prop ← state_t.lift $ is_prop α,
+  if ¬ a_type ∧ ¬ a_prop then do
+    α ← intern_ty lctx α,
+    lc ← state_t.lift $ mk_local' pp_n bi α,
+    p ← intern_expr lctx (p.instantiate_var lc),
+    pure $ app (const ``Exists ls) α
+      (lam pp_n bi α (p.abstract_local lc.local_uniq_name))
+  else
+    intern_here lctx e
 | lctx (app (app (const ``Exists ls) α) p) :=
   -- η-expand
   intern_expr lctx (app (const ``Exists ls)
@@ -271,31 +291,45 @@ meta def intern_expr : list expr → expr → intern expr
   let t := t0.instantiate_var lc,
   t_prop ← state_t.lift $ is_prop t,
   d_prop ← state_t.lift $ is_prop d,
-  if ¬ t_prop then intern_here lctx e
-  else if d_prop ∧ ¬ t0.has_var then -- implication
+  d_type ← state_t.lift $ is_type d,
+  if t_prop ∧ d_prop ∧ ¬ t0.has_var then -- implication
     imp <$> intern_expr lctx d <*> intern_expr lctx t
-  else do -- forall
+  else if t_prop ∧ ¬ d_type then do -- forall
     d ← intern_ty lctx d,
     t ← intern_expr (lc :: lctx) t,
     pure (pi pp_n binder_info.default d (t.abstract_local lc.local_uniq_name))
+  else
+    intern_here lctx e
 | lctx e@(lam pp_n bi d t) := do
-  lc ← state_t.lift $ mk_local' pp_n bi d,
-  let t := t.instantiate_var lc,
-  -- t_prop ← state_t.lift $ is_prop t,
-  -- if ¬ t_prop then intern_here lctx e else do
-  d ← intern_ty lctx d,
-  t ← intern_expr (lc :: lctx) t,
-  pure (lam pp_n binder_info.default d (t.abstract_local lc.local_uniq_name))
+  d_type ← state_t.lift $ is_type d,
+  if ¬ d_type ∧ false then do
+    lc ← state_t.lift $ mk_local' pp_n bi d,
+    let t := t.instantiate_var lc,
+    -- t_prop ← state_t.lift $ is_prop t,
+    -- if ¬ t_prop then intern_here lctx e else do
+    d ← intern_ty lctx d,
+    t ← intern_expr (lc :: lctx) t,
+    pure (lam pp_n binder_info.default d (t.abstract_local lc.local_uniq_name))
+  else
+    intern_here lctx e
 | lctx e := intern_here lctx e
 
-meta def intern_lems (lems : list expr) : tactic (list (expr × expr)) := do
+meta def intern_lems (lems : list expr) : tactic (list (expr × expr) × list (expr × expr)) := do
+lems ← lems.mfilter is_proof,
 tys ← lems.mmap infer_type,
 let cs := _root_.consts_and_local_consts tys,
--- trace cs,
 nargs ← rb_map.of_list <$> cs.mmap (λ c, do t ← infer_type c, pure (get_head_name c, num_mono_args t)),
-(tys', st) ← state_t.run (lems.mmap (λ l,
-  do t ← state_t.lift (infer_type l), t ← intern_expr [] t, pure (l, t))) { nargs := nargs },
-pure tys'
+prod.fst <$> state_t.run (do
+lems' ← lems.mmap (λ l, do
+      t ← state_t.lift (infer_type l),
+      t ← intern_expr [] t,
+      pure (l, t)),
+let cs := _root_.consts_and_local_consts (lems'.map prod.snd),
+cs' ← cs.mmap (λ c, do
+      t ← state_t.lift (infer_type c),
+      t ← intern_ty [] t,
+      pure (c,t)),
+pure $ (cs', lems')) { nargs := nargs }
 
 meta def tptpify_quant' (q : string) (x : string) (t : format) (b : format) : format :=
 format.paren' $ q ++ (format.nest 1 $ format.group $
@@ -357,7 +391,7 @@ meta def to_tf0_tm : list expr → expr → to_tf0 format
 | lctx `(¬ %%x) := do
   x' ← to_tf0_tm lctx x,
   pure $ format.paren' $ "~" ++ format.line ++ x'
-| lctx (app (app (const ``Exists _) _) (lam pp_n _ d a)) := do
+| lctx (app (app (const ``Exists α) _) (lam pp_n _ d a)) := do
   lc ← state_t.lift $ mk_local' pp_n binder_info.default d,
   tptpify_quant' "?" <$> to_tf0.var_name lc <*> to_tf0_ty d <*>
     to_tf0_tm (lc :: lctx) (a.instantiate_var lc)
@@ -377,6 +411,10 @@ meta def to_tf0_tm : list expr → expr → to_tf0 format
   (format.paren' ∘ format.join ∘ list.intersperse (format.space ++ "@" ++ format.line))
     <$> (fn :: as).mmap (to_tf0_tm lctx)
 -- | lctx (app a b) := tptpify_binop "@" <$> to_tf0_tm lctx a <*> to_tf0_tm lctx b
+| lctx (lam pp_n bi d a) := do
+  lc ← state_t.lift $ mk_local' pp_n binder_info.default d,
+  tptpify_quant' "^" <$> to_tf0.var_name lc <*> to_tf0_ty d <*>
+    to_tf0_tm (lc :: lctx) (a.instantiate_var lc)
 | _ e := do state_t.lift $ trace e, pure "e_UNSUPPORTED"
 
 meta def to_tf0.run {α} (t : to_tf0 α) : tactic α :=
@@ -387,36 +425,25 @@ format.group $ format.nest 1 $ "thf(" ++ format.group (
     n ++ "," ++ format.line ++ role ++ ",")
   ++ format.line ++ f ++ ")."
 
-meta def to_tf0_file (lems : list (expr × expr)) : to_tf0 (format × list (string × expr × expr)) := do
-lems ← lems.mfilter (λ ⟨pr, ty⟩, state_t.lift $ is_prop ty),
-let cs := (_root_.consts_and_local_consts (lems.map prod.snd)).filter
-  (λ c, c.const_name ≠ ``eq ∧ c.const_name ≠ ``Exists),
-sorts ← cs.mfilter (λ c, do t ← state_t.lift $ infer_type c >>= whnf,
-  pure $ match t with
-  | (sort level.zero) := ff
-  | (sort _) := tt
-  | _ := ff
-  end),
+meta def to_tf0_file (cs : list (expr × expr)) (lems : list (expr × expr)) : to_tf0 (format × list (string × expr × expr)) := do
+let sorts := _root_.consts_and_local_consts (cs.map prod.snd),
 sort_decls ← sorts.mmap (λ c, do
   c' ← to_tf0.con_name c,
   pure $ tptpify_thf_ann "type" ("ty_" ++ c')
     (tptpify_binop ":" c' "$tType")),
-cs ← cs.mfilter (λ c, do t ← state_t.lift $ infer_type c >>= whnf,
-  pure $ match t with
-  | (sort level.zero) := tt
-  | (sort _) := ff
-  | _ := tt
-  end),
-ty_decls ← cs.mmap (λ c, do
-  t ← state_t.lift $ infer_type c,
+-- state_t.lift $ trace (cs, lems),
+ty_decls ← cs.mmap (λ ⟨c, t⟩, do
   t' ← to_tf0_ty t,
   c' ← to_tf0.con_name c,
   pure $ tptpify_thf_ann "type" ("ty_" ++ c') (tptpify_binop ":" c' t')),
+lems ← state_t.lift $ lems.mfilter (λ ⟨pr, ty⟩, is_prop ty),
+-- state_t.lift $ trace lems,
 axs ← lems.mmap (λ ⟨pr, ty⟩, do
   n ← to_tf0.ax_name pr,
   ann ← tptpify_thf_ann "axiom" n <$> to_tf0_tm [] ty,
   pure (n, pr, ty, ann)),
-let tptp := format.join $ (sort_decls ++ ty_decls ++ axs.map (λ ⟨n,pr,ty,ann⟩, ann))
+let tptp := format.join $
+  ((sort_decls ++ ty_decls ++ axs.map (λ ⟨n,pr,ty,ann⟩, ann)).map format.group)
   .intersperse (format.line ++ format.line),
 pure (tptp, axs.map (λ ⟨n,pr,ty,ann⟩, (n, pr, ty)))
 
@@ -435,15 +462,16 @@ repeat (intro1 >> skip),
   mk_mapp ``classical.by_contradiction [some tgt] >>= eapply >> intro1 >> skip),
 lems ← (++) <$> axs.mmap mk_const <*> local_context,
 lems' ← monomorphize lems 2,
-lems'' ← intern_lems lems',
-(to_tf0_file lems'').run
+(cs'', lems'') ← intern_lems lems',
+(to_tf0_file cs'' lems'').run
 
 meta def filter_lemmas_via_monom (axs : list name) : tactic (list (expr × expr)) := do
 (tptp, ax_names) ← mk_monom_file axs,
+trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 -- (failure : tactic unit),
-tptp_out ← exec_cmd "bash" ["-c",
+tptp_out ← timetac "eprover-ho took" $ exec_cmd "bash" ["-c",
   "set -o pipefail; eprover-ho --cpu-limit=30 --proof-object=1 | " ++
     "grep -oP '(?<=file\\(..stdin.., ).*?(?=\\))'"]
   tptp.to_string,
@@ -456,7 +484,7 @@ axs ← timetac "Premise selection took" $ retrieve $
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-timetac "eprover-ho took" $ filter_lemmas_via_monom axs
+filter_lemmas_via_monom axs
 
 namespace mysuper
 open super
@@ -519,7 +547,7 @@ ls'' ← intern_lems ls',
 trace_state,
 trace ls'',
 -- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
-(to_tf0_file ls'').run >>= trace,
+(to_tf0_file ls''.1 ls''.2).run >>= trace,
 triv
 
 -- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0) : true :=
@@ -531,7 +559,7 @@ namespace tactic
 namespace interactive
 open interactive interactive.types lean.parser
 
-meta def find_lemmas_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+meta def find_lemmas_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
 lems ←
   match axs with
   | none := hammer.find_lemmas_via_monom max_lemmas
@@ -548,7 +576,7 @@ lems.mmap' (λ ⟨l, t⟩, do
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
 admit
 
-meta def hammer_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+meta def hammer_via_monom (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
 lems ←
   match axs with
   | none := hammer.find_lemmas_via_monom max_lemmas
@@ -568,6 +596,6 @@ hammer.reconstruct lems
 end interactive
 end tactic
 
-set_option trace.super true
-example (x y : ℤ) : x + y = y + x :=
-by hammer_via_monom
+-- set_option trace.super true
+-- example (x y : ℤ) : x + y = y + x :=
+-- by hammer_via_monom [add_comm]
