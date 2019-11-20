@@ -84,7 +84,7 @@ open expr tactic
 
 meta def get_head_name : expr → name
 | (app a _) := get_head_name a
-| (local_const _ uniq_name _ _) := uniq_name
+| (local_const uniq_name _ _ _) := uniq_name
 | (const n _) := n
 | _ := name.anonymous
 
@@ -294,7 +294,7 @@ meta def intern_expr : list expr → expr → intern expr
   d_type ← state_t.lift $ is_type d,
   if t_prop ∧ d_prop ∧ ¬ t0.has_var then -- implication
     imp <$> intern_expr lctx d <*> intern_expr lctx t
-  else if t_prop ∧ ¬ d_type then do -- forall
+  else if t_prop ∧ ¬ d_prop ∧ ¬ d_type then do -- forall
     d ← intern_ty lctx d,
     t ← intern_expr (lc :: lctx) t,
     pure (pi pp_n binder_info.default d (t.abstract_local lc.local_uniq_name))
