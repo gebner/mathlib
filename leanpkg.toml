@@ -5,3 +5,4 @@ lean_version = "3.4.2"
 path = "src"
 
 [dependencies]
+super = {git = "https://github.com/leanprover/super", rev = "fe50a40c3e2aeda02aa07c64752b0acf1edd9af4"}

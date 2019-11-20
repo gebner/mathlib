@@ -1,6 +1,8 @@
 import data.list.defs meta.expr tactic.core
 
-local attribute [inline] name.has_lt name.lt.decidable_rel bool.decidable_eq decidable.to_bool
+local attribute [inline] name.has_lt name.lt.decidable_rel bool.decidable_eq
+decidable.to_bool cmp cmp_using native.mk_rb_map native.mk_rb_set native.rb_map.set_of_list
+native.rb_map.of_list
 set_option trace.compiler.optimize_bytecode true
 
 meta def expr.constants_set (e : expr) : name_set :=
@@ -50,6 +52,7 @@ meta instance : has_repr feature := ⟨feature.to_string⟩
 meta instance : has_to_tactic_format feature := ⟨λ f, pure $ f.to_string⟩
 meta instance : has_to_format feature := ⟨λ f, f.to_string⟩
 
+@[inline]
 protected meta def lt : feature → feature → bool
 | (c n) (c n') := n < n'
 | (digr f a) (digr f' a') := f < f' ∨ (f = f' ∧ a < a')
@@ -61,6 +64,7 @@ meta instance : has_lt feature := ⟨λ a b, feature.lt a b⟩
 
 local attribute [inline] feature.lt
 
+@[inline]
 meta instance : decidable_rel ((<) : feature → feature → Prop) :=
 by simp [(<)]; apply_instance
 
@@ -199,4 +203,4 @@ end tactic
 
 set_option profiler true
 
-example : ∀ x y : nat, x + y = y + x := by feature_search 20
+example : ∀ x y : nat, x + y = y + x := by feature_search 20; sorry
