@@ -1,4 +1,5 @@
 import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates
+super
 
 meta def format.paren' (a : format) :=
 a.paren.group
@@ -470,6 +471,54 @@ let axs := (axs.take max).map (λ a, a.1),
 trace axs,
 timetac "Vampire took" $ filter_lemmas1 axs goal
 
+namespace mysuper1
+open super
+
+meta def initial (local_false : expr) (clauses : list clause) : tactic prover_state := do
+after_setup ← (clauses.mmap' (λc : clause,
+  do mk_derived c { priority := score.prio.immediate, in_sos := ff,
+                    age := 0, cost := 0 } >>= add_inferred
+)).run (prover_state.empty local_false),
+return after_setup.2
+
+meta def default_preprocessing : list (prover unit) :=
+[
+clausify_pre,
+clause_normalize_pre,
+factor_dup_lits_pre,
+remove_duplicates_pre,
+refl_r_pre,
+-- diff_constr_eq_l_pre,
+tautology_removal_pre,
+subsumption_interreduction_pre,
+forward_subsumption_pre,
+return ()
+]
+
+meta def mysuper (lemmas : list expr) (os : super.opts) : tactic unit := do
+try_for os.timeout $ with_trim $ do
+as_refutation, local_false ← target,
+lctx_clauses ← clauses_of_context,
+clauses ← lemmas.mmap (clause.of_proof local_false),
+initial_state ← initial local_false (lctx_clauses ++ clauses),
+inf_names ← attribute.get_instances `super.inf,
+infs ← inf_names.mmap $ λn, eval_expr inf_decl (const n []),
+infs ← return $ list.map inf_decl.inf $ list.sort_on inf_decl.prio infs,
+res ← (run_prover_loop selection21 (age_weight_clause_selection 3 4)
+  default_preprocessing infs
+  os.max_iters 0).run initial_state,
+match res with
+| (some empty_clause, st) := apply empty_clause >> skip
+| (none, saturation) := do sat_fmt ← pp saturation,
+                           fail $ to_fmt "saturation:" ++ format.line ++ sat_fmt
+end
+
+end mysuper1
+
+meta def reconstruct1 (axs : list name) : tactic unit := focus1 $ do
+axs.mmap' (λ ax, try $ interactive.with_lemmas [ax]),
+mysuper1.mysuper [] {timeout := 100000}
+
 #eval do
 let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
 axs ← select_for_goal goal,
@@ -497,6 +546,21 @@ lems ←
 trace "Vampire proof uses the following lemmas:",
 lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
 admit
+
+meta def hammer1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+goal ← reverted_target,
+lems ←
+  match axs with
+  | none := hammer.find_lemmas1 goal max_lemmas
+  | some axs := do
+    axs.mmap' (λ ax, get_decl ax),
+    timetac "Vampire took" $
+      hammer.filter_lemmas1 axs goal
+  end,
+trace "Vampire proof uses the following lemmas:",
+lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+tactic.intros,
+hammer.reconstruct1 lems
 
 end interactive
 end tactic
