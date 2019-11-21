@@ -467,7 +467,7 @@ lems' ← monomorphize lems 2,
 
 meta def filter_lemmas2 (axs : list name) : tactic (list (expr × expr)) := do
 (tptp, ax_names) ← mk_monom_file axs,
-trace tptp,
+-- trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 -- (failure : tactic unit),
