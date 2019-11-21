@@ -960,6 +960,56 @@ begin
   exact tendsto_of_liminf_eq_limsup ⟨liminf_eq_lintegral, limsup_eq_lintegral⟩
 end
 
+#print ""
+
+lemma dominated_convergence_nn_filter {ι} {l : filter ι}
+  {F : ι → α → ennreal} {f : α → ennreal} {g : α → ennreal}
+  (hl_cb : l.has_countable_basis)
+  (hF_meas : ∀n, measurable (F n)) (hf_meas : measurable f) (hg_meas : measurable g)
+  (h_bound : ∀n, ∀ₘ a, F n a ≤ g a)
+  (h_fin : lintegral g < ⊤)
+  (h_lim : ∀ₘ a, tendsto (λ n, F n a) l (nhds (f a))) :
+  tendsto (λn, lintegral (F n)) l (nhds (lintegral f)) :=
+begin
+rw @topological_space.tendsto_iff_seq_tendsto ℕ _ _ _ _ _ _ hl_cb,
+intros x hxl,
+apply dominated_convergence_nn,
+{intro, apply hF_meas},
+{assumption},
+{apply hg_meas},
+{intros, apply h_bound (x n)},
+{assumption},
+{apply mem_sets_of_superset h_lim, intro a, dsimp, intro h,
+apply @tendsto.comp _ _ _ x (λ n, F n a); assumption }
+end
+
+
+#print ""
+
+lemma dominated_convergence_nn_filter' {ι} {l : filter ι}
+  {F : ι → α → ennreal} {f : α → ennreal} {g : α → ennreal}
+  (hl_cb : l.has_countable_basis)
+  (hF_meas : { n | measurable (F n) } ∈ l)
+  (hf_meas : measurable f) (hg_meas : measurable g)
+  (h_bound : { n | ∀ₘ a, F n a ≤ g a } ∈ l)
+  (h_fin : lintegral g < ⊤)
+  (h_lim : ∀ₘ a, tendsto (λ n, F n a) l (nhds (f a))) :
+  tendsto (λn, lintegral (F n)) l (nhds (lintegral f)) :=
+begin
+rw @topological_space.tendsto_iff_seq_tendsto ℕ _ _ _ _ _ _ hl_cb,
+intros x hxl,
+apply dominated_convergence_nn,
+{intro, apply hF_meas},
+{assumption},
+{apply hg_meas},
+{intros, apply h_bound (x n)},
+{assumption},
+{apply mem_sets_of_superset h_lim, intro a, dsimp, intro h,
+apply @tendsto.comp _ _ _ x (λ n, F n a); assumption }
+end
+
+#exit
+
 section
 open encodable
 
