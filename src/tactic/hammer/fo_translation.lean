@@ -519,10 +519,14 @@ meta def reconstruct1 (axs : list name) : tactic unit := focus1 $ do
 axs.mmap' (λ ax, try $ interactive.with_lemmas [ax]),
 mysuper1.mysuper [] {timeout := 100000}
 
+set_option pp.all true
+#print nat.le_succ
+
 #eval do
 let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
-axs ← select_for_goal goal,
-(tptp, _) ← do_trans ((axs.take 10).map prod.fst) goal,
+-- axs ← select_for_goal goal,
+let axs := [(``nat.le_succ, ())],
+(tptp, _) ← do_trans ((axs.take 20).map prod.fst) goal,
 trace tptp
 
 end hammer

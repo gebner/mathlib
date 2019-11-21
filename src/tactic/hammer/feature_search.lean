@@ -3,7 +3,7 @@ import data.list.defs meta.expr tactic.core
 local attribute [inline] name.has_lt name.lt.decidable_rel bool.decidable_eq
 decidable.to_bool cmp cmp_using native.mk_rb_map native.mk_rb_set native.rb_map.set_of_list
 native.rb_map.of_list
-set_option trace.compiler.optimize_bytecode true
+-- set_option trace.compiler.optimize_bytecode true
 
 meta def expr.constants_set (e : expr) : name_set :=
 e.fold mk_name_set $ λ e _ s,
