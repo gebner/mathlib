@@ -381,6 +381,8 @@ with to_tf0_ty_fun : expr → to_tf0 format
 | a := to_tf0_ty a
 
 meta def to_tf0_tm : list expr → expr → to_tf0 format
+| lctx `(true) := pure "$true"
+| lctx `(false) := pure "$false"
 | lctx lc@(local_const _ _ _ _) :=
   format.of_string <$> if lc ∈ lctx then to_tf0.var_name lc else to_tf0.con_name lc
 | lctx (const n _) := pure $ fn_tptpify_name n
