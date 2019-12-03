@@ -488,52 +488,10 @@ let axs := (axs.take max).map (λ a, a.1),
 trace axs,
 filter_lemmas2 axs
 
-namespace mysuper
-open super
-
-meta def initial (local_false : expr) (clauses : list clause) : tactic prover_state := do
-after_setup ← (clauses.mmap' (λc : clause,
-  do mk_derived c { priority := score.prio.immediate, in_sos := ff,
-                    age := 0, cost := 0 } >>= add_inferred
-)).run (prover_state.empty local_false),
-return after_setup.2
-
-meta def default_preprocessing : list (prover unit) :=
-[
-clausify_pre,
-clause_normalize_pre,
-factor_dup_lits_pre,
-remove_duplicates_pre,
-refl_r_pre,
--- diff_constr_eq_l_pre,
-tautology_removal_pre,
-subsumption_interreduction_pre,
-forward_subsumption_pre,
-return ()
-]
-
-meta def mysuper (lemmas : list expr) (os : super.opts) : tactic unit := do
-try_for os.timeout $ with_trim $ do
-as_refutation, local_false ← target,
-clauses ← lemmas.mmap (clause.of_proof local_false),
-initial_state ← initial local_false clauses,
-inf_names ← attribute.get_instances `super.inf,
-infs ← inf_names.mmap $ λn, eval_expr inf_decl (const n []),
-infs ← return $ list.map inf_decl.inf $ list.sort_on inf_decl.prio infs,
-res ← (run_prover_loop selection21 (age_weight_clause_selection 3 4)
-  default_preprocessing infs
-  os.max_iters 0).run initial_state,
-match res with
-| (some empty_clause, st) := apply empty_clause >> skip
-| (none, saturation) := do sat_fmt ← pp saturation,
-                           fail $ to_fmt "saturation:" ++ format.line ++ sat_fmt
-end
-
-end mysuper
-
-meta def reconstruct (axs : list (expr × expr)) : tactic unit := focus1 $ do
-lems ← axs.mmap (λ ⟨pr, ty⟩, mk_mapp ``id [ty, pr]),
-mysuper.mysuper lems {}
+meta def reconstruct2 (axs : list (expr × expr)) : tactic unit :=
+focus1 $ super.with_ground_mvars $ do
+axs ← axs.mmap $ λ ⟨pr, ty⟩, super.clause.of_type_and_proof ty pr,
+super.solve_with_goal {} axs
 
 -- set_option pp.all true
 example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
@@ -593,7 +551,7 @@ lems.mmap' (λ ⟨l, t⟩, do
   -- t ← infer_type l >>= pp,
   t ← pp t,
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
-hammer.reconstruct lems
+hammer.reconstruct2 lems
 
 end interactive
 end tactic
