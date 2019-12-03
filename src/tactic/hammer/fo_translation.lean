@@ -473,7 +473,8 @@ timetac "Vampire took" $ filter_lemmas1 axs goal
 
 meta def reconstruct1 (axs : list name) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
-axs ← axs.mmap $ λ ax, mk_const ax >>= super.clause.of_proof,
+axs ← list.join <$> (axs.mmap $ λ ax,
+  pure <$> (mk_const ax >>= super.clause.of_proof) <|> pure []),
 super.solve_with_goal {} axs
 
 #eval do
