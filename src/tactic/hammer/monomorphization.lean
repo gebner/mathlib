@@ -467,8 +467,8 @@ lems' ← monomorphize lems 2,
 (cs'', lems'') ← intern_lems lems',
 (to_tf0_file cs'' lems'').run
 
-meta def filter_lemmas2 (axs : list name) : tactic (list (expr × expr)) := do
-(tptp, ax_names) ← mk_monom_file axs,
+meta def filter_lemmas2_core (tptp : format) (ax_names : list (string × expr × expr)) :
+  tactic (list (expr × expr)) := do
 -- trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
@@ -479,6 +479,10 @@ tptp_out ← timetac "eprover-ho took" $ exec_cmd "bash" ["-c",
   tptp.to_string,
 let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, (ax_names.find n).to_list
+
+meta def filter_lemmas2 (axs : list name) : tactic (list (expr × expr)) := do
+(tptp, ax_names) ← mk_monom_file axs,
+filter_lemmas2_core tptp ax_names
 
 meta def find_lemmas2 (max := 10) : tactic (list (expr × expr)) := do
 axs ← timetac "Premise selection took" $ retrieve $
