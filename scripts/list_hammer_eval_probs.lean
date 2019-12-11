@@ -1,4 +1,4 @@
-import data.int.gcd tactic.hammer.feature_search
+import all tactic.hammer.feature_search
 
 attribute [inline] decidable.to_bool bool.decidable_eq
 
