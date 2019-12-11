@@ -1,4 +1,4 @@
-import data.list.defs meta.expr tactic.core
+import data.list.defs meta.expr tactic.core init.meta.feature_search
 
 local attribute [inline] name.has_lt name.lt.decidable_rel bool.decidable_eq
 decidable.to_bool cmp cmp_using native.mk_rb_map native.mk_rb_set native.rb_map.set_of_list
@@ -24,7 +24,7 @@ meta def name.has_suffix (s : string) : name → bool
 
 namespace hammer
 
-open native tactic
+open native tactic feature_search
 
 meta def mk_ignore_args_for_type : expr → list bool
 | (expr.pi _ binder_info.inst_implicit t e) := tt :: mk_ignore_args_for_type e
@@ -36,43 +36,43 @@ e ← get_env,
 pure $ rb_map.of_list $ e.get_trusted_decls.map $ λ d,
   (d.to_name, mk_ignore_args_for_type d.type)
 
-@[derive decidable_eq]
-meta inductive feature
-| c (n : name)
-| digr (f a : name)
+-- @[derive decidable_eq]
+-- meta inductive feature
+-- | c (n : name)
+-- | digr (f a : name)
 
-namespace feature
+-- namespace feature
 
-protected meta def to_string : feature → string
-| (c n) := n.to_string
-| (digr f a) := f.to_string ++ "→" ++ a.to_string
+-- protected meta def to_string : feature → string
+-- | (c n) := n.to_string
+-- | (digr f a) := f.to_string ++ "→" ++ a.to_string
 
-meta instance : has_to_string feature := ⟨feature.to_string⟩
-meta instance : has_repr feature := ⟨feature.to_string⟩
-meta instance : has_to_tactic_format feature := ⟨λ f, pure $ f.to_string⟩
-meta instance : has_to_format feature := ⟨λ f, f.to_string⟩
+-- meta instance : has_to_string feature := ⟨feature.to_string⟩
+-- meta instance : has_repr feature := ⟨feature.to_string⟩
+-- meta instance : has_to_tactic_format feature := ⟨λ f, pure $ f.to_string⟩
+-- meta instance : has_to_format feature := ⟨λ f, f.to_string⟩
 
-@[inline]
-protected meta def lt : feature → feature → bool
-| (c n) (c n') := n < n'
-| (digr f a) (digr f' a') := f < f' ∨ (f = f' ∧ a < a')
-| (c _) (digr _ _) := true
-| (digr _ _) (c _) := false
+-- @[inline]
+-- protected meta def lt : feature → feature → bool
+-- | (c n) (c n') := n < n'
+-- | (digr f a) (digr f' a') := f < f' ∨ (f = f' ∧ a < a')
+-- | (c _) (digr _ _) := true
+-- | (digr _ _) (c _) := false
 
-@[inline]
-meta instance : has_lt feature := ⟨λ a b, feature.lt a b⟩
+-- @[inline]
+-- meta instance : has_lt feature := ⟨λ a b, feature.lt a b⟩
 
-local attribute [inline] feature.lt
+-- local attribute [inline] feature.lt
 
-@[inline]
-meta instance : decidable_rel ((<) : feature → feature → Prop) :=
-by simp [(<)]; apply_instance
+-- @[inline]
+-- meta instance : decidable_rel ((<) : feature → feature → Prop) :=
+-- by simp [(<)]; apply_instance
 
-end feature
+-- end feature
 
-@[reducible]
-meta def feature_vec :=
-rb_set feature
+-- @[reducible]
+-- meta def feature_vec :=
+-- rb_set feature
 
 private meta def ignored_consts : name_set :=
 name_set.of_list [ ``Exists, ``and, ``or, ``iff, ``eq, ``heq, name.anonymous ]
@@ -108,27 +108,27 @@ let cs := non_ignored_consts fn cs in
   (λ cs ⟨i, a⟩, if i then cs else non_ignored_consts a cs)
   cs
 
-meta def features_of (il : rb_map name (list bool)) : expr → feature_vec → feature_vec
-| (expr.pi _ binder_info.inst_implicit t e) := features_of e
-| (expr.lam _ binder_info.inst_implicit t e) := features_of e
-| (expr.pi _ _ t e) := features_of t ∘ features_of e
-| (expr.lam _ _ t e) := features_of t ∘ features_of e
-| (expr.var _) := id
-| (expr.sort _) := id
-| (expr.mvar _ _ _) := id
-| (expr.local_const _ _ _ _) := id
-| (expr.macro _ es) := λ fv, es.foldl (λ fv e, features_of e fv) fv
-| (expr.elet _ t v e) := features_of t ∘ features_of v ∘ features_of e
-| (expr.const n _) := if is_ignored_const n then id else λ fv, fv.insert (feature.c n)
-| e@(expr.app _ _) := λ fv, let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
-  let fv := features_of fn fv in
-  (((il.find hs).get_or_else []).zip_extend ff as).foldl
-    (λ fv ⟨i, a⟩, if i then fv else
-      let hsa := head_sym_of a,
-          fv := if is_ignored_const hsa then fv else
-            fv.insert (feature.digr hs hsa) in
-      features_of a fv)
-    fv
+-- meta def features_of (il : rb_map name (list bool)) : expr → feature_vec → feature_vec
+-- | (expr.pi _ binder_info.inst_implicit t e) := features_of e
+-- | (expr.lam _ binder_info.inst_implicit t e) := features_of e
+-- | (expr.pi _ _ t e) := features_of t ∘ features_of e
+-- | (expr.lam _ _ t e) := features_of t ∘ features_of e
+-- | (expr.var _) := id
+-- | (expr.sort _) := id
+-- | (expr.mvar _ _ _) := id
+-- | (expr.local_const _ _ _ _) := id
+-- | (expr.macro _ es) := λ fv, es.foldl (λ fv e, features_of e fv) fv
+-- | (expr.elet _ t v e) := features_of t ∘ features_of v ∘ features_of e
+-- | (expr.const n _) := if is_ignored_const n then id else λ fv, fv.insert (feature.c n)
+-- | e@(expr.app _ _) := λ fv, let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
+--   let fv := features_of fn fv in
+--   (((il.find hs).get_or_else []).zip_extend ff as).foldl
+--     (λ fv ⟨i, a⟩, if i then fv else
+--       let hsa := head_sym_of a,
+--           fv := if is_ignored_const hsa then fv else
+--             fv.insert (feature.digr hs hsa) in
+--       features_of a fv)
+--     fv
 
 meta def mk_blacklist : tactic (rb_set name) := do
 e ← get_env,
@@ -136,13 +136,15 @@ ds ← e.get_trusted_decls.mfilter (λ d, is_instance d.to_name),
 cs ← attribute.get_instances `class,
 pure $ rb_map.set_of_list $ ignored_consts.to_list ++ cs ++ ds.map (λ d, d.to_name)
 
-meta def features_of_decl' (il : rb_map name (list bool)) (d : declaration) : feature_vec :=
-features_of il d.type mk_rb_set
--- ignored_consts.foldl name_set.erase d.type.constants_set
+-- meta def features_of_decl' (il : rb_map name (list bool)) (d : declaration) : feature_vec :=
+-- features_of il d.type mk_rb_set
+-- -- ignored_consts.foldl name_set.erase d.type.constants_set
 
-meta def features_of_decl (n : name) : tactic feature_vec := do
-il ← mk_ignore_args,
-features_of_decl' il <$> get_decl n
+-- meta def features_of_decl (n : name) : tactic feature_vec := do
+-- il ← mk_ignore_args,
+-- features_of_decl' il <$> get_decl n
+
+meta def features_of_decl := feature_search.feature_vec.of_thm
 
 #eval features_of_decl ``add_comm >>= trace
 
@@ -150,36 +152,37 @@ features_of_decl' il <$> get_decl n
 meta def hist {α} [has_lt α] [decidable_rel ((<) : α → α → Prop)] (l : list α) : rb_map α nat :=
 l.foldl (λ hist a, hist.insert a ((hist.find a).get_or_else 0 + 1)) mk_rb_map
 
-local attribute [inline] option.get_or_else
-meta def df (docs : rb_map name feature_vec) : rb_map feature nat :=
-hist $ docs.values >>= rb_set.to_list
+-- local attribute [inline] option.get_or_else
+-- meta def df (docs : rb_map name feature_vec) : rb_map feature nat :=
+-- hist $ docs.values >>= rb_set.to_list
 
-meta def doc_weight_prod (doc1 doc2 : feature_vec) (dfm : rb_map feature nat) : nat :=
-list.sum $ doc1.to_list.map (λ f,
-  if ¬ doc2.contains f then 0
-  else dfm.size / (dfm.find f).get_or_else 0)
+-- meta def doc_weight_prod (doc1 doc2 : feature_vec) (dfm : rb_map feature nat) : nat :=
+-- list.sum $ doc1.to_list.map (λ f,
+--   if ¬ doc2.contains f then 0
+--   else dfm.size / (dfm.find f).get_or_else 0)
 
-meta def doc_weight_dist (doc1 doc2 : feature_vec) (dfm : rb_map feature nat) (dfm_size := dfm.size) : nat :=
-list.sum $
- doc1.to_list.map (λ f, if doc2.contains f then 0 else dfm_size / (dfm.find f).get_or_else 0 / 10) ++
- doc2.to_list.map (λ f, if doc1.contains f then 0 else dfm_size / (dfm.find f).get_or_else 0)
+-- meta def doc_weight_dist (doc1 doc2 : feature_vec) (dfm : rb_map feature nat) (dfm_size := dfm.size) : nat :=
+-- list.sum $
+--  doc1.to_list.map (λ f, if doc2.contains f then 0 else dfm_size / (dfm.find f).get_or_else 0 / 10) ++
+--  doc2.to_list.map (λ f, if doc1.contains f then 0 else dfm_size / (dfm.find f).get_or_else 0)
 
 meta def doc_weight (doc : feature_vec) (dfm : rb_map feature nat) : nat :=
 (doc.to_list.map (λ f, dfm.size / (dfm.find f).get_or_else 0)).sum
 
-meta def select_for_goal (g : expr) : tactic (list $ name × nat) := do
+meta def select_for_goal (g : expr) : tactic (list $ name × float) := do
 e ← get_env,
-bl ← mk_ignore_args,
-let lems := rb_map.of_list $
-  list.filter (λ n, ¬ is_ignored_const n.1) $
-  e.get_trusted_decls.map (λ d, (d.to_name, features_of_decl' bl d)),
-let dfm := df lems, let dfm_size := dfm.size,
-let goal_fv := features_of_decl' bl (declaration.thm `_goal [] g (task.pure `(true.intro))),
-let ws := lems.map (λ fv, doc_weight_dist goal_fv fv dfm dfm_size),
-let ws := ws.to_list,
--- let ws := ws.filter (λ x, x.2 < 1000),
+-- bl ← mk_ignore_args,
+lems ← list.filter (λ n : name × _, ¬ is_ignored_const n.1) <$>
+  e.get_trusted_decls.mmap (λ d, do
+    fv ← feature_vec.of_expr d.type,
+    pure (d.to_name, fv)),
+let dfm := feature_stats.of_feature_vecs (lems.map prod.snd),
+-- let dfm := df lems, let dfm_size := dfm.size,
+goal_fv ← feature_vec.of_expr g,
+let ws := lems.map (λ ⟨n, fv⟩, (n, dfm.cosine_similarity goal_fv fv)),
+let ws := ws.filter (λ x, x.2 > 0.5),
 -- let ws := ws.to_list.filter (λ x : _ × _, x.2 ≠ 0),
-let ws := ws.qsort (λ a b, a.2 < b.2),
+let ws := ws.qsort (λ a b, a.2 > b.2),
 -- trace $ ws.take 10,
 -- trace $ ws.take 500,
 pure ws
@@ -203,4 +206,4 @@ end tactic
 
 set_option profiler true
 
-example : ∀ x y : nat, x + y = y + x := by feature_search 20; sorry
+example : ∀ x y : nat, x + y = y + x := by feature_search 100; sorry
