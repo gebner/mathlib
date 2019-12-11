@@ -40,4 +40,4 @@ e.list_theorems.mmap' $ λ n, do
   let fn := (to_string mod_name ++ ".." ++ to_string n).map
     (λ c, if c = '\'' ∨ c = '/' then '_' else c) ++ ".lean",
   trace $ "echo \"import " ++ to_string mod_name ++ " tactic.hammer.do_eval " ++
-    "#eval hammer.do_eval_for_thm ``" ++ to_string n ++ "\" >" ++ fn
+    "#eval hammer.do_eval_for_thm \\`\\`" ++ to_string n ++ "\" >" ++ fn
