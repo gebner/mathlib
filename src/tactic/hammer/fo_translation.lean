@@ -475,6 +475,7 @@ meta def reconstruct1 (axs : list name) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
 axs ← list.join <$> (axs.mmap $ λ ax,
   pure <$> (mk_const ax >>= super.clause.of_proof) <|> pure []),
+axs ← (++ axs) <$> (tactic.local_context >>= list.mmap super.clause.of_proof),
 super.solve_with_goal {} axs
 
 #eval do
