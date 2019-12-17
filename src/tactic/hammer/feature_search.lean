@@ -1,9 +1,9 @@
 import data.list.defs meta.expr tactic.core init.meta.feature_search
+import data.list.sort
 
 local attribute [inline] name.has_lt name.lt.decidable_rel bool.decidable_eq
 decidable.to_bool cmp cmp_using native.mk_rb_map native.mk_rb_set native.rb_map.set_of_list
 native.rb_map.of_list
--- set_option trace.compiler.optimize_bytecode true
 
 meta def expr.constants_set (e : expr) : name_set :=
 e.fold mk_name_set $ λ e _ s,
@@ -146,7 +146,7 @@ pure $ rb_map.set_of_list $ ignored_consts.to_list ++ cs ++ ds.map (λ d, d.to_n
 
 meta def features_of_decl := feature_search.feature_vec.of_thm
 
-#eval features_of_decl ``add_comm >>= trace
+-- #eval features_of_decl ``add_comm >>= trace
 
 @[inline]
 meta def hist {α} [has_lt α] [decidable_rel ((<) : α → α → Prop)] (l : list α) : rb_map α nat :=
@@ -177,14 +177,10 @@ lems ← list.filter (λ n : name × _, ¬ is_ignored_const n.1) <$>
     fv ← feature_vec.of_expr d.type,
     pure (d.to_name, fv)),
 let dfm := feature_stats.of_feature_vecs (lems.map prod.snd),
--- let dfm := df lems, let dfm_size := dfm.size,
 goal_fv ← feature_vec.of_expr g,
-let ws := lems.map (λ ⟨n, fv⟩, (n, dfm.cosine_similarity goal_fv fv)),
-let ws := ws.filter (λ x, x.2 > 0.3),
--- let ws := ws.to_list.filter (λ x : _ × _, x.2 ≠ 0),
-let ws := ws.qsort (λ a b, a.2 > b.2),
--- trace $ ws.take 10,
--- trace $ ws.take 500,
+let ws := lems.map $ λ ⟨n, fv⟩, (n, dfm.cosine_similarity goal_fv fv),
+let ws := ws.filter $ λ x, x.2 > 0,
+let ws := ws.merge_sort $ λ a b, a.2 > b.2,
 pure ws
 
 end hammer
@@ -206,4 +202,4 @@ end tactic
 
 set_option profiler true
 
-example : ∀ x y : nat, x + y = y + x := by feature_search 100; sorry
+-- example : ∀ x y : nat, x + y = y + x := by feature_search 100; sorry
