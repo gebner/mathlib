@@ -19,9 +19,9 @@ meta structure polym_lem :=
 namespace polym_lem
 
 private meta def c_score : expr → ℕ
-| (expr.mvar _ _ _) := 10
-| (expr.const ``nonempty _) := 5
-| _ := 0
+| (expr.mvar _ _ _) := 1000
+| (expr.const ``nonempty _) := 900
+| e := 800 - e.get_weight
 
 meta def of_hol_tm (thm : hol_tm) : polym_lem := do
 let cs := (do c ← thm.exprs, guard c.has_meta_var, pure c),
@@ -46,7 +46,8 @@ meta def monom2_core {α} (cheads : list expr) :
     pure []
   | _ := collect_successes (e::cheads) $ λ ch, do
     trace (ch, e),
-    unify ch e transparency.reducible,
+    unify e ch,
+    trace "ok",
     monom2_core es cont
   end
 
@@ -59,6 +60,7 @@ pure [prop]
 
 meta def monomorphization2_round (lems : list polym_lem) : tactic (list hol_tm) := do
 let cs := (do l ← lems, c ← l.prop.exprs, guard $ ¬ c.has_meta_var, pure c).dup_native,
+trace cs,
 lems' ← list.join <$> lems.mmap (monom2 cs),
 lems' ← lems'.mmap (λ lem, do t ← lem.to_expr, pure (t, lem)),
 let lems' := (lems'.group_by_native prod.fst).to_list.map (λ ⟨k, vs⟩, vs.head.2),
@@ -68,6 +70,7 @@ pure lems'
 
 meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list hol_tm) := do
 lems ← lems.mmap polym_lem.of_lemma,
+lems.mmap' (λ ⟨a,b⟩, trace(a,b)),
 rounds.iterate (λ lems', do lems' ← lems',
   monomorphization2_round (lems ++ lems'.map polym_lem.of_hol_tm)) (pure [])
 
@@ -221,8 +224,10 @@ let lems'' := lems',
 -- axs ← axs.mmap $ λ ⟨pr, ty⟩, super.clause.of_type_and_proof ty pr,
 -- super.solve_with_goal {} axs
 
--- set_option pp.all true
+set_option pp.all true
 set_option profiler true
+set_option trace.type_context.is_def_eq true
+-- set_option trace.type_context.is_def_eq_detail true
 
 example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
   (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
@@ -230,7 +235,7 @@ ls ← local_context,
 l1 ← mk_const ``add_comm,
 l2 ← mk_const ``le_antisymm,
 l3 ← mk_const ``exists_congr,
-l4 ← mk_const ``add_left_cancel_iff,
+l4 ← mk_const ``zero_sub,
 let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
 ls ← ls.mmap infer_type,
 -- ls ← (λ x, [x]) <$> get_local `h3,
