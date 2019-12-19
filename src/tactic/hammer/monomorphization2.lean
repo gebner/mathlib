@@ -13,6 +13,9 @@ match tac s with
 | x := x
 end
 
+-- meta instance list.has_to_tactic_format {α} [has_to_tactic_format α] : has_to_tactic_format (list α) :=
+-- ⟨λ l, to_fmt <$> l.mmap tactic.pp⟩
+
 open native
 open expr
 open tactic
@@ -58,8 +61,8 @@ meta def unify : monom3_fact → monom3_fact → list monom3_fact
 | (con c') (polym_lem n s thm pl) := do
   c ← pl.cs,
   match c with expr.mvar _ _ _ := [] | _ := pure () end,
-  result.success pl' s' ← [(trace (c', c) >> tactic.unify c' c >> trace "ok" >> pl.clean_consts) s] | [],
-  result.success thm' _ ← [pl.prop.to_expr s'] | [],
+  result.success pl' s' ← [(tactic.unify c c' >> pl.clean_consts) s] | [],
+  result.success thm' _ ← [instantiate_mvars thm s'] | [],
   [polym_lem n s' thm' pl']
 | _ _ := []
 
@@ -73,7 +76,7 @@ meta def is_monom : monom3_fact → bool
 
 meta def to_string : monom3_fact → string
 | (con c) := "con " ++ c.to_string
-| (polym_lem n s thm pl) := "polym_lem " ++ _root_.to_string pl.prop
+| (polym_lem n s thm pl) := (to_fmt "polym_lem " ++ pl.prop.to_format s.fmt_expr).to_string
 
 end monom3_fact
 
@@ -84,7 +87,8 @@ meta def monom3_loop :
   rb_map monom3_key monom3_fact → ℕ → list (expr × hol_tm)
 | done new active passive n :=
 let new_monom := (do
-  monom3_fact.polym_lem n _ thm ⟨[], tm⟩ ← new | [],
+  monom3_fact.polym_lem n s thm ⟨[], tm⟩ ← new | [],
+  result.success tm _ ← [tm.instantiate_mvars s] | [],
   [(thm, n, tm)]) in
 let new := new.filter (λ f, ¬ f.is_monom) in
 let done := new_monom.foldl (λ done x, rb_map.insert done x.1 x.2) done in
@@ -94,7 +98,6 @@ let new := new.filter (λ f, ¬ passive.contains f.key ∧ ¬ active.contains f.
 let passive := new.foldl (λ passive x, rb_map.insert passive x.key x) passive in
 match passive.min with
 | some given :=
-trace given.to_string $
   let passive := passive.erase given.key in
   let active := active.insert given.key given in
   let unifs := do a ← active.values, given.unify a ++ a.unify given in
@@ -123,7 +126,6 @@ meta def monom2 (cheads : list expr) (lem : (expr × polym_lem)) : tactic (list 
 retrieve_or_else [] $
 monom2_core cheads lem.2.cs $ do
 prop ← lem.2.prop.instantiate_mvars,
-trace prop,
 guard $ ¬ prop.has_expr_meta_var,
 pure [(lem.1, prop)]
 
@@ -131,22 +133,30 @@ meta def monomorphization2_round (lems : list (expr × polym_lem)) : tactic (lis
 let cs := (do (n,l) ← lems, c ← l.prop.exprs, guard $ ¬ c.has_meta_var, pure c).dup_native,
 lems' ← list.join <$> lems.mmap (monom2 cs),
 lems' ← lems'.mmap (λ ⟨n, lem⟩, do t ← lem.to_expr, pure (t, n, lem)),
-let lems' := (lems'.group_by_native prod.fst).to_list.map (λ ⟨k, vs⟩, vs.head.2),
+let lems' := (lems'.dup_by_native prod.fst).map prod.snd,
+trace lems',
 pure lems'
 
+meta def simplify_lems (lems : list (expr × hol_tm)) : tactic (list (expr × hol_tm)) :=
+prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])) {}
+
 meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list (expr × hol_tm)) := do
-lems ← lems.mmap (λ n, prod.mk n <$> (infer_type n >>= polym_lem.of_lemma)),
+lems ← lems.mmap (λ n, prod.mk n <$> (infer_type n >>= hol_tm.of_lemma)),
+lems ← simplify_lems lems,
+trace lems,
+let lems := lems.map (λ ⟨n, tm⟩, (n, polym_lem.of_hol_tm tm)),
+trace $ lems.map (λ l, l.2.prop),
 rounds.iterate (λ lems', do lems' ← lems',
     monomorphization2_round (lems ++
       lems'.map (λ ⟨n,l⟩, prod.mk n (polym_lem.of_hol_tm l))))
   (pure [])
 
 meta def monomorphize3 (lems : list expr) (max_iters := 1000) : tactic (list (expr × hol_tm)) := do
-new ← lems.mmap (λ pr, do
-  s ← read,
+new ← lems.mmap (λ pr, retrieve $ do
   t ← infer_type pr,
   pl ← polym_lem.of_lemma t,
   thm ← pl.prop.to_expr,
+  s ← read,
   pure $ monom3_fact.polym_lem pr s thm pl),
 pure $ monom3_loop mk_rb_map new mk_rb_map mk_rb_map max_iters
 
@@ -271,9 +281,6 @@ let tptp := format.join $
   .intersperse (format.line ++ format.line),
 pure (tptp, axs.map (λ ⟨n,pr,ax,ann⟩, (n, pr, ax)))
 
-meta def simplify_lems (lems : list (expr × hol_tm)) : tactic (list (expr × hol_tm)) :=
-prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])) {}
-
 meta def mk_monom2_file (axs : list name) : tactic (format × list (string × expr × hol_tm)) := do
 goal ← retrieve (revert_all >> target),
 let axs := goal.constants.filter is_good_const ++ axs,
@@ -282,7 +289,7 @@ repeat (intro1 >> skip),
 (do tgt ← target, when (tgt ≠ `(false)) $
   mk_mapp ``classical.by_contradiction [some tgt] >>= eapply >> intro1 >> skip),
 lems ← (++) <$> axs.mmap mk_const <*> local_context,
-lems' ← monomorphize3 lems,
+lems' ← monomorphize2 lems,
 lems'' ← simplify_lems lems',
 (to_tf0_file2 lems'').run
 
@@ -316,7 +323,7 @@ focus1 $ super.with_ground_mvars $ do
 axs ← axs.mmap $ λ ⟨pr, _⟩, super.clause.of_proof pr,
 super.solve_with_goal {} axs
 
-set_option pp.all true
+-- set_option pp.all true
 set_option profiler true
 -- set_option trace.type_context.is_def_eq true
 -- set_option trace.type_context.is_def_eq_detail true
@@ -330,11 +337,11 @@ l3 ← mk_const ``exists_congr,
 l4 ← mk_const ``zero_sub,
 let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
 -- ls ← (λ x, [x]) <$> get_local `h3,
-ls' ← monomorphize3 ls,
-ls'' ← simplify_lems ls',
-trace ls'',
+ls ← monomorphize2 ls,
+ls ← simplify_lems ls,
+trace ls,
 -- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
-(to_tf0_file2 ls'').run >>= trace,
+(to_tf0_file2 ls).run >>= trace,
 triv
 
 -- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0) : true :=
@@ -384,5 +391,6 @@ end interactive
 end tactic
 
 -- set_option trace.super true
--- example (x y : ℤ) : x + y = y + x :=
--- by hammer3 --[add_comm]
+set_option profiler true
+example (x y : ℤ) : x + y = y + x :=
+by hammer3 20

@@ -7,12 +7,14 @@ instance int.inhabited : inhabited ℤ := ⟨0⟩
 
 open tactic
 
-meta def tactic.get_expr_formatter : tactic (expr → format) :=
-do s ← read, pure $ λ e,
+meta def tactic_state.fmt_expr (s : tactic_state) (e : expr) : format :=
 match pp e s with
 | result.success f _ := f
 | result.exception _ _ _ := to_fmt e
 end
+
+meta def tactic.get_expr_formatter : tactic (expr → format) :=
+tactic_state.fmt_expr <$> read
 
 meta def expr.has_mvar (n : name) (e : expr) : tactic bool := do
 ms ← e.sorted_mvars,
@@ -492,7 +494,8 @@ meta def simplify : hol_tm → list hol_ty → simpl hol_tm
   | _ := imp <$> state_t.lift (ensure_bool_core lctx a) <*>
           (simplify b lctx >>= state_t.lift ∘ ensure_bool_core lctx)
   end
-| e@(app (con (expr.const ``_root_.nonempty [l]) ty) t) lctx := do
+| e@(app (con (expr.const ``_root_.nonempty [l]) ty) t) lctx :=
+  if l = level.zero then simplify t lctx else do
   let c : expr := expr.const ``_root_.nonempty [l],
   t ← simplify t lctx,
   t' ← state_t.lift t.to_expr,
