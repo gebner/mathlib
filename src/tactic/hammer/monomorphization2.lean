@@ -39,7 +39,70 @@ let cs := cs.merge_sort (λ a b, c_score a < c_score b),
 meta def of_lemma (thm : expr) : tactic polym_lem :=
 of_hol_tm <$> hol_tm.of_lemma thm
 
+meta def clean_consts (pl : polym_lem) : tactic polym_lem := do
+cs ← pl.cs.mmap instantiate_mvars,
+let cs := cs.filter (λ e, e.has_meta_var),
+pure {cs := cs, ..pl}
+
 end polym_lem
+
+@[reducible] meta def monom3_key := ℕ × expr
+
+meta inductive monom3_fact
+| polym_lem (n : expr) (s : tactic_state) (thm : expr) (pl : polym_lem)
+| con (c : expr)
+
+namespace monom3_fact
+
+meta def unify : monom3_fact → monom3_fact → list monom3_fact
+| (con c') (polym_lem n s thm pl) := do
+  c ← pl.cs,
+  match c with expr.mvar _ _ _ := [] | _ := pure () end,
+  result.success pl' s' ← [(trace (c', c) >> tactic.unify c' c >> trace "ok" >> pl.clean_consts) s] | [],
+  result.success thm' _ ← [pl.prop.to_expr s'] | [],
+  [polym_lem n s' thm' pl']
+| _ _ := []
+
+meta def key : monom3_fact → monom3_key
+| (polym_lem _ _ thm _) := (1, thm)
+| (con c) := (0, c)
+
+meta def is_monom : monom3_fact → bool
+| (polym_lem n s thm ⟨[], _⟩) := tt
+| _ := ff
+
+meta def to_string : monom3_fact → string
+| (con c) := "con " ++ c.to_string
+| (polym_lem n s thm pl) := "polym_lem " ++ _root_.to_string pl.prop
+
+end monom3_fact
+
+meta def monom3_loop :
+  rb_map expr (expr × hol_tm) →
+  list monom3_fact →
+  rb_map monom3_key monom3_fact →
+  rb_map monom3_key monom3_fact → ℕ → list (expr × hol_tm)
+| done new active passive n :=
+let new_monom := (do
+  monom3_fact.polym_lem n _ thm ⟨[], tm⟩ ← new | [],
+  [(thm, n, tm)]) in
+let new := new.filter (λ f, ¬ f.is_monom) in
+let done := new_monom.foldl (λ done x, rb_map.insert done x.1 x.2) done in
+if n = 0 then done.values else
+let new := new ++ do ⟨_, _, tm⟩ ← new_monom, e ← tm.exprs, [monom3_fact.con e] in
+let new := new.filter (λ f, ¬ passive.contains f.key ∧ ¬ active.contains f.key) in
+let passive := new.foldl (λ passive x, rb_map.insert passive x.key x) passive in
+match passive.min with
+| some given :=
+trace given.to_string $
+  let passive := passive.erase given.key in
+  let active := active.insert given.key given in
+  let unifs := do a ← active.values, given.unify a ++ a.unify given in
+  let unifs := unifs in
+  let new := unifs.dup_by_native monom3_fact.key in
+  monom3_loop done unifs active passive (n-1)
+| none := done.values
+end
 
 meta def monom2_core {α} (cheads : list expr) :
   list expr → tactic (list α) → tactic (list α)
@@ -77,6 +140,15 @@ rounds.iterate (λ lems', do lems' ← lems',
     monomorphization2_round (lems ++
       lems'.map (λ ⟨n,l⟩, prod.mk n (polym_lem.of_hol_tm l))))
   (pure [])
+
+meta def monomorphize3 (lems : list expr) (max_iters := 1000) : tactic (list (expr × hol_tm)) := do
+new ← lems.mmap (λ pr, do
+  s ← read,
+  t ← infer_type pr,
+  pl ← polym_lem.of_lemma t,
+  thm ← pl.prop.to_expr,
+  pure $ monom3_fact.polym_lem pr s thm pl),
+pure $ monom3_loop mk_rb_map new mk_rb_map mk_rb_map max_iters
 
 meta def to_tf0.name'_core (e : expr) (f : name → string) : to_tf0 string := do
 ns ← to_tf0_state.ns <$> state_t.get,
@@ -210,7 +282,7 @@ repeat (intro1 >> skip),
 (do tgt ← target, when (tgt ≠ `(false)) $
   mk_mapp ``classical.by_contradiction [some tgt] >>= eapply >> intro1 >> skip),
 lems ← (++) <$> axs.mmap mk_const <*> local_context,
-lems' ← monomorphize2 lems 2,
+lems' ← monomorphize3 lems,
 lems'' ← simplify_lems lems',
 (to_tf0_file2 lems'').run
 
@@ -244,8 +316,8 @@ focus1 $ super.with_ground_mvars $ do
 axs ← axs.mmap $ λ ⟨pr, _⟩, super.clause.of_proof pr,
 super.solve_with_goal {} axs
 
--- set_option pp.all true
--- set_option profiler true
+set_option pp.all true
+set_option profiler true
 -- set_option trace.type_context.is_def_eq true
 -- set_option trace.type_context.is_def_eq_detail true
 
@@ -258,7 +330,7 @@ l3 ← mk_const ``exists_congr,
 l4 ← mk_const ``zero_sub,
 let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
 -- ls ← (λ x, [x]) <$> get_local `h3,
-ls' ← monomorphize2 ls 3,
+ls' ← monomorphize3 ls,
 ls'' ← simplify_lems ls',
 trace ls'',
 -- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
@@ -311,8 +383,6 @@ hammer.reconstruct3 lems
 end interactive
 end tactic
 
-#print ""
-
-set_option trace.super true
-example (x y : ℤ) : x + y = y + x :=
-by hammer3 --[add_comm]
+-- set_option trace.super true
+-- example (x y : ℤ) : x + y = y + x :=
+-- by hammer3 --[add_comm]
