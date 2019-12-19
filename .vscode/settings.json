@@ -8,5 +8,6 @@
   "files.trimFinalNewlines": true,
   "files.trimTrailingWhitespace": true,
   "search.usePCRE2": true,
-  "lean.timeLimit": 1000000
+  "lean.timeLimit": 1000000,
+  "git.ignoreLimitWarning": true
 }

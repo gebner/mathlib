@@ -141,8 +141,9 @@ match (nargs.find fnn, cheads.find fnn) with
     (as.drop n).foldl (λ cont a, monom_core a cont) cont
   else do
     res1 ← (collect_successes chs $ λ ch, do
-      -- trace (ch, e'),
+      trace (ch, e'),
       unify ch e',
+      trace "ok",
       (as.drop n).foldl (λ cont a, monom_core a cont) cont),
     -- trace res1.length,
     res2 ← retrieve_or_else [] $
@@ -497,14 +498,15 @@ focus1 $ super.with_ground_mvars $ do
 axs ← axs.mmap $ λ ⟨pr, ty⟩, super.clause.of_type_and_proof ty pr,
 super.solve_with_goal {} axs
 
--- set_option pp.all true
+set_option pp.all true
 example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
   (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
 ls ← local_context,
 l1 ← mk_const ``add_comm,
 l2 ← mk_const ``le_antisymm,
 l3 ← mk_const ``exists_congr,
-let ls : list expr := l1 :: l2 :: l3 :: ls,
+l4 ← mk_const ``zero_sub,
+let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
 -- ls ← (λ x, [x]) <$> get_local `h3,
 ls' ← monomorphize ls 3,
 ls'' ← intern_lems ls',

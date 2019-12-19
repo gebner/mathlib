@@ -3,6 +3,8 @@ import tactic.core super.utils data.equiv.basic data.vector
 instance sort.inhabited : inhabited (Sort*) :=
 ⟨pempty⟩
 
+instance int.inhabited : inhabited ℤ := ⟨0⟩
+
 open tactic
 
 meta def tactic.get_expr_formatter : tactic (expr → format) :=
@@ -11,6 +13,10 @@ match pp e s with
 | result.success f _ := f
 | result.exception _ _ _ := to_fmt e
 end
+
+meta def expr.has_mvar (n : name) (e : expr) : tactic bool := do
+ms ← e.sorted_mvars,
+pure $ ms.existsb $ λ m, m.meta_uniq_name = n
 
 open tactic
 
@@ -28,7 +34,7 @@ meta instance : inhabited hol_ty := ⟨tbool⟩
 
 meta def to_format (ef : expr → format) : hol_ty → format
 | tbool := "o"
-| (base t) := (ef t).paren.group
+| (base t) := ((ef t).bracket "『" "』").group
 | (arr a b) := (to_format a ++ format.space ++ "→" ++ format.line ++ to_format b).paren.group
 
 meta instance : has_to_format hol_ty := ⟨to_format to_fmt⟩
@@ -162,11 +168,21 @@ namespace hol_tm
 
 meta instance : inhabited hol_tm := ⟨lcon hol_lcon.true⟩
 
+meta def all (x : name) (t : hol_ty) (a : hol_tm) : hol_tm :=
+app (lcon $ hol_lcon.all t) (lam x t a)
+
+@[pattern] meta def imp (a b : hol_tm) : hol_tm :=
+app (app (lcon $ hol_lcon.imp) a) b
+
+@[pattern] meta def true : hol_tm :=
+lcon hol_lcon.true
+
 meta def to_format_core (ef : expr → format) : hol_tm → list name → format
 | (app (lcon (hol_lcon.all t)) (lam x _ a)) lctx :=
   ((to_fmt "∀ " ++ to_fmt x ++ " :" ++ format.line ++ t.to_format ef ++ ",").group ++
     format.line ++ to_format_core a (x::lctx)).paren.group
-| (con n t) _ := (ef n).paren.group
+| (imp a b) lctx := (to_format_core a lctx ++ format.space ++ "→" ++ format.line ++ b.to_format_core lctx).paren.group
+| (con n t) _ := ((ef n).bracket "「" "」").group
 | (lcon lc) _ := to_fmt lc
 | (cast t a) lctx := (to_format_core a lctx ++ format.space ++ ":" ++ format.line ++ t.to_format ef).paren.group
 | (app a b) lctx := (to_format_core a lctx ++ format.line ++ to_format_core b lctx).paren.group
@@ -194,12 +210,6 @@ meta def to_expr : hol_tm → tactic expr
 | (cast t a) := a.to_expr
 | (lam x t a) := expr.lam x binder_info.default t.to_expr <$> a.to_expr
 | (var i) := pure (expr.var i)
-
-meta def all (x : name) (t : hol_ty) (a : hol_tm) : hol_tm :=
-app (lcon $ hol_lcon.all t) (lam x t a)
-
-meta def imp (a b : hol_tm) : hol_tm :=
-app (app (lcon $ hol_lcon.imp) a) b
 
 meta def map (f : expr → expr) : hol_tm → hol_tm
 | (con n t) := con (f n) (t.map f)
@@ -258,6 +268,22 @@ meta def instantiate_var_core (z : hol_tm) : hol_tm → ℕ → hol_tm
 
 meta def instantiate_var (t z : hol_tm) : hol_tm :=
 instantiate_var_core z t 0
+
+meta def has_var_idx : hol_tm → ℕ → bool
+| (con _ _) n := ff
+| (lcon _) n := ff
+| (app a b) n := a.has_var_idx n || b.has_var_idx n
+| (lam x t a) n := a.has_var_idx (n+1)
+| (cast t a) n := a.has_var_idx n
+| (var i) n := i = n
+
+meta def has_vars : hol_tm → bool
+| (con _ _) := ff
+| (lcon _) := ff
+| (app a b) := a.has_vars || b.has_vars
+| (lam x t a) := a.has_vars
+| (cast t a) := a.has_vars
+| (var i) := tt
 
 meta def app' : hol_tm → hol_tm → hol_tm
 | (lam x t a) b := a.instantiate_var b
@@ -319,11 +345,25 @@ pure $ con e (hol_ty.of_expr t)
 meta def ensure_bool_core (lctx : list hol_ty) (e : hol_tm) : tactic hol_tm :=
 let t := e.ty_core lctx in
 if t = hol_ty.tbool then pure e else do
-u ← infer_univ t.to_expr,
-pure $ app (con (expr.const ``_root_.nonempty [u]) (hol_ty.arr t hol_ty.tbool)) e
+u ← whnf t.to_expr,
+match u with
+| (expr.sort u) := do
+  pure $ app (con (expr.const ``_root_.nonempty [u]) (hol_ty.arr t hol_ty.tbool)) e
+| _ := do
+  e ← pp e,
+  fail $ to_fmt "ensure_bool_core: not a type: " ++ e
+end
 
 meta def ensure_type (t : hol_ty) (e : hol_tm) (lctx : list hol_ty) : hol_tm :=
 if e.ty_core lctx = t then e else cast t e
+
+meta def safe_app (a b : hol_tm) (expected : hol_ty) (lctx : list hol_ty) : hol_tm :=
+match a.ty_core lctx with
+| (hol_ty.arr ta1 ta2) :=
+  app a $ ensure_type ta1 b lctx
+| _ := do
+  app (cast (hol_ty.arr (b.ty_core lctx) expected) a) b
+end
 
 meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
 | (expr.app (expr.const ``eq _) t) lctx lctx_lean :=
@@ -355,13 +395,8 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
   else do
     a' ← of_expr_core a lctx lctx_lean,
     b' ← of_expr_core b lctx lctx_lean,
-    match a'.ty_core lctx with
-    | (hol_ty.arr ta1 ta2) :=
-      pure $ app a' $ ensure_type ta1 b' lctx
-    | _ := do
-      te ← infer_type e,
-      pure $ app (cast (hol_ty.arr (b'.ty_core lctx) (hol_ty.of_expr te)) a') b'
-    end
+    te ← infer_type e,
+    pure $ safe_app a' b' (hol_ty.of_expr te) lctx
 | e@(expr.lam n bi a b) lctx lctx_lean := do
   l ← mk_local' n bi a,
   let t' := hol_ty.of_expr a,
@@ -376,6 +411,11 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
   | (some i) := pure $ var i
   | _ := mk_const l
   end
+| m@(expr.mvar _ _ _) lctx lctx_lean :=
+  match lctx_lean.index_of' m.meta_uniq_name with
+  | (some i) := pure $ var i
+  | _ := mk_const m
+  end
 | (expr.var i) _ _ := fail "of_expr_core (var _)"
 | e lctx lctx_lean := mk_const e
 
@@ -387,18 +427,18 @@ meta def of_lemma_core_top : expr → list hol_ty → list name → tactic hol_t
   t_prop ← is_prop t,
   t_type ← is_type t,
   let e_has_var : bool := e.has_var,
-  l ← mk_local' n bi t,
-  let e := e.instantiate_var l,
   if t_prop ∨ ¬ e_has_var then do
+    l ← mk_local' n bi t,
+    let e := e.instantiate_var l,
     e' ← of_lemma_core_top e lctx lctx_lean,
     pure $ if is_nonempty then e' else imp ne' e'
   else do
+    m ← mk_meta_var t,
+    let e := e.instantiate_var m,
     let t'_ty := hol_ty.of_expr t,
-    e' ← of_lemma_core_top e (t'_ty::lctx) (l.local_uniq_name::lctx_lean),
-    let e' := e'.abstract_local l.local_uniq_name,
-    if e'.has_expr_var then do
-      m ← mk_meta_var t,
-      let e' := e'.instantiate_expr_var m,
+    e' ← of_lemma_core_top e (t'_ty::lctx) (m.meta_uniq_name::lctx_lean),
+    has_mvar ← e'.to_expr >>= expr.has_mvar m.meta_uniq_name,
+    if has_mvar then do
       m' ← mk_const m,
       let e' := e'.instantiate_var m',
       pure $ if is_nonempty then e' else imp ne' e'
@@ -411,6 +451,64 @@ meta def of_lemma_core_top : expr → list hol_ty → list name → tactic hol_t
 
 meta def of_lemma (e : expr) : tactic hol_tm :=
 of_lemma_core_top e [] []
+
+open native
+
+meta structure simplify_state :=
+(canon : rb_map expr expr := mk_rb_map)
+(reprs : list expr := [])
+
+@[reducible] meta def simpl := state_t simplify_state tactic
+
+meta def canonize (e : expr) : simpl expr := do
+⟨canon, reprs⟩ ← get,
+match canon.find e with
+| some e' := pure e'
+| none := do
+  rs ← state_t.lift $ reprs.mfilter (λ r, option.is_some <$> try_core (is_def_eq r e)),
+  match rs with
+  | (r::_) := do
+    modify $ λ st, { canon := st.canon.insert e r, ..st },
+    pure r
+  | [] := do
+    modify $ λ st, { canon := st.canon.insert e e, reprs := e :: st.reprs },
+    pure e
+  end
+end
+
+meta def simplify_type : hol_ty → simpl hol_ty
+| (hol_ty.arr a b) := hol_ty.arr <$> simplify_type a <*> simplify_type b
+| (hol_ty.base b) :=
+  if b = `(Prop) then pure hol_ty.tbool else do
+  b ← canonize b,
+  pure $ if b = `(Prop) then hol_ty.tbool else hol_ty.base b
+| hol_ty.tbool := pure hol_ty.tbool
+
+meta def simplify : hol_tm → list hol_ty → simpl hol_tm
+| (imp a b) lctx := do
+  a ← simplify a lctx,
+  match a with
+  | true := simplify b lctx
+  | _ := imp <$> state_t.lift (ensure_bool_core lctx a) <*>
+          (simplify b lctx >>= state_t.lift ∘ ensure_bool_core lctx)
+  end
+| e@(app (con (expr.const ``_root_.nonempty [l]) ty) t) lctx := do
+  let c : expr := expr.const ``_root_.nonempty [l],
+  t ← simplify t lctx,
+  t' ← state_t.lift t.to_expr,
+  has_inst ← option.is_some <$> state_t.lift (try_core $ mk_instance (c t') <|> mk_instance t'),
+  pure $ if has_inst then true else safe_app (con c ty) t hol_ty.tbool lctx
+| e@(app a b) lctx := (λ a b, safe_app a b (e.ty_core lctx) lctx) <$> simplify a lctx <*> simplify b lctx
+| (lam x t a) lctx := do
+  t' ← simplify_type t,
+  lam x t' <$> simplify a (t' :: lctx)
+| (var i) lctx := pure $ var i
+| lc@(lcon (hol_lcon.eq t)) lctx := (lcon ∘ hol_lcon.eq) <$> simplify_type t
+| lc@(lcon (hol_lcon.all t)) lctx := (lcon ∘ hol_lcon.all) <$> simplify_type t
+| lc@(lcon (hol_lcon.ex t)) lctx := (lcon ∘ hol_lcon.ex) <$> simplify_type t
+| lc@(lcon _) lctx := pure lc
+| (con n t) lctx := con <$> canonize n <*> simplify_type t
+| (cast t a) lctx := simplify a lctx
 
 #eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma t >>= trace
 #eval do t ← tactic.mk_const ``vector.cons >>= infer_type, of_lemma t >>= trace
