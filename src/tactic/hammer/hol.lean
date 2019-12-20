@@ -179,6 +179,9 @@ app (app (lcon $ hol_lcon.imp) a) b
 @[pattern] meta def true : hol_tm :=
 lcon hol_lcon.true
 
+@[pattern] meta def false : hol_tm :=
+lcon hol_lcon.false
+
 meta def to_format_core (ef : expr → format) : hol_tm → list name → format
 | (app (lcon (hol_lcon.all t)) (lam x _ a)) lctx :=
   ((to_fmt "∀ " ++ to_fmt x ++ " :" ++ format.line ++ t.to_format ef ++ ",").group ++
@@ -392,6 +395,23 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
 | `(¬ %%x) lctx lctx_lean := do
   x ← of_expr_core x lctx lctx_lean >>= ensure_bool_core lctx,
   pure $ app (lcon hol_lcon.neg) x
+| `(_root_.false) lctx lctx_lean := pure false
+| `(_root_.true) lctx lctx_lean := pure true
+| e@(expr.pi n bi t a) lctx lctx_lean := do
+  e_prop ← is_prop e,
+  if ¬ e_prop then mk_const e else do
+  if a.has_var then do
+    let t' := hol_ty.of_expr t,
+    ne' ← of_expr_core t lctx lctx_lean >>= ensure_bool_core lctx,
+    l ← mk_local' n bi t,
+    a ← of_expr_core (a.instantiate_var l) (t'::lctx) (l.local_uniq_name::lctx_lean),
+    let a := a.abstract_local l.local_uniq_name,
+    if a.has_expr_var then mk_const e else
+    pure $ all n t' a
+  else do
+    t ← of_expr_core t lctx lctx_lean >>= ensure_bool_core lctx,
+    a ← of_expr_core a lctx lctx_lean >>= ensure_bool_core lctx,
+    pure $ imp t a
 | e@(expr.app a b) lctx lctx_lean := do
   tb@(expr.pi _ bi dom cod) ← infer_type a >>= whnf |
     (do a ← pp a, fail $ to_fmt "of_expr_core (app _ _): does not have function type: " ++ a),
@@ -535,6 +555,8 @@ meta def simplify : hol_tm → list hol_ty → simpl hol_tm
 
 #eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma t >>= trace
 #eval do t ← tactic.mk_const ``vector.cons >>= infer_type, of_lemma t >>= trace
+private def foo : ∀ f g : ℕ → ℕ, (∀ x, f x = g x) → f = g := @_root_.funext ℕ (λ _, ℕ)
+#eval do t ← tactic.mk_const ``foo >>= infer_type, of_lemma t >>= trace
 #eval do t ← tactic.mk_const ``equiv.equiv_congr >>= infer_type, of_lemma_core_top t [] [] >>= trace
 #eval do t ← tactic.mk_const ``equiv.Pi_congr_right >>= infer_type, of_lemma_core_top t [] [] >>= trace
 
