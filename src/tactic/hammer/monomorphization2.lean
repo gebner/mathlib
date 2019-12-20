@@ -136,12 +136,12 @@ lems' ← lems'.mmap (λ ⟨n, lem⟩, do t ← lem.to_expr, pure (t, n, lem)),
 let lems' := (lems'.dup_by_native prod.fst).map prod.snd,
 pure lems'
 
-meta def simplify_lems (lems : list (expr × hol_tm)) : tactic (list (expr × hol_tm)) :=
-prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])) {}
+meta def simplify_lems (lems : list (expr × hol_tm)) (do_canon := tt) : tactic (list (expr × hol_tm)) :=
+prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])) {do_canon := do_canon}
 
 meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list (expr × hol_tm)) := do
 lems ← lems.mmap (λ n, prod.mk n <$> (infer_type n >>= hol_tm.of_lemma)),
-lems ← simplify_lems lems,
+lems ← simplify_lems lems ff,
 let lems := lems.map (λ ⟨n, tm⟩, (n, polym_lem.of_hol_tm tm)),
 rounds.iterate (λ lems', do lems' ← lems',
     monomorphization2_round (lems ++

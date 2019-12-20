@@ -1,4 +1,4 @@
-import tactic.hammer.monomorphization tactic.suggest
+import tactic.hammer.monomorphization tactic.suggest tactic.hammer.monomorphization2
 
 namespace hammer
 open tactic
@@ -65,6 +65,32 @@ lems.mmap' (λ ⟨l, t⟩, do
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
+meta def eval_hammer3 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+axs ← timetac ("SELECT " ++ desc) $ retrieve $
+  set_env_core for_env >> revert_all >> target >>= select_for_goal,
+let axs := (axs.take max_lemmas).map (λ a, a.1),
+trace axs,
+trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
+(tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
+lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
+trace "eprover-ho proof uses the following lemmas:",
+lems.mmap' (λ ⟨l, t⟩, do
+  l' ← pp l,
+  t ← pp t,
+  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
+
+meta def eval_hammer3_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
+(tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
+lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
+trace "eprover-ho proof uses the following lemmas:",
+lems.mmap' (λ ⟨l, t⟩, do
+  l' ← pp l,
+  t ← pp t,
+  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
+
 meta def eval_super (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
@@ -123,6 +149,9 @@ my_timetac (to_string n ++ " hammer1 oracle") (eval_hammer1_oracle env cs),
 my_timetac (to_string n ++ " hammer2 10") (eval_hammer2 env 10),
 my_timetac (to_string n ++ " hammer2 100") (eval_hammer2 env 100),
 my_timetac (to_string n ++ " hammer2 oracle") (eval_hammer2_oracle env cs),
+my_timetac (to_string n ++ " hammer3 10") (eval_hammer3 env 10),
+my_timetac (to_string n ++ " hammer3 100") (eval_hammer3 env 100),
+my_timetac (to_string n ++ " hammer3 oracle") (eval_hammer3_oracle env cs),
 skip
 
 meta def do_eval_for_thm (decl_name : name) : tactic unit := retrieve $ do

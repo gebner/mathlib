@@ -457,13 +457,14 @@ of_lemma_core_top e [] []
 open native
 
 meta structure simplify_state :=
+(do_canon : bool := tt)
 (canon : rb_map expr expr := mk_rb_map)
 (reprs : list expr := [])
 
 @[reducible] meta def simpl := state_t simplify_state tactic
 
 meta def canonize (e : expr) : simpl expr := do
-⟨canon, reprs⟩ ← get,
+⟨tt, canon, reprs⟩ ← get | pure e,
 match canon.find e with
 | some e' := pure e'
 | none := do
@@ -473,7 +474,7 @@ match canon.find e with
     modify $ λ st, { canon := st.canon.insert e r, ..st },
     pure r
   | [] := do
-    modify $ λ st, { canon := st.canon.insert e e, reprs := e :: st.reprs },
+    modify $ λ st, { canon := st.canon.insert e e, reprs := e :: st.reprs, ..st },
     pure e
   end
 end
