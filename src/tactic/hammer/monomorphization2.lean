@@ -134,7 +134,6 @@ let cs := (do (n,l) ← lems, c ← l.prop.exprs, guard $ ¬ c.has_meta_var, pur
 lems' ← list.join <$> lems.mmap (monom2 cs),
 lems' ← lems'.mmap (λ ⟨n, lem⟩, do t ← lem.to_expr, pure (t, n, lem)),
 let lems' := (lems'.dup_by_native prod.fst).map prod.snd,
-trace lems',
 pure lems'
 
 meta def simplify_lems (lems : list (expr × hol_tm)) : tactic (list (expr × hol_tm)) :=
@@ -143,9 +142,7 @@ prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])
 meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list (expr × hol_tm)) := do
 lems ← lems.mmap (λ n, prod.mk n <$> (infer_type n >>= hol_tm.of_lemma)),
 lems ← simplify_lems lems,
-trace lems,
 let lems := lems.map (λ ⟨n, tm⟩, (n, polym_lem.of_hol_tm tm)),
-trace $ lems.map (λ l, l.2.prop),
 rounds.iterate (λ lems', do lems' ← lems',
     monomorphization2_round (lems ++
       lems'.map (λ ⟨n,l⟩, prod.mk n (polym_lem.of_hol_tm l))))
@@ -324,7 +321,7 @@ axs ← axs.mmap $ λ ⟨pr, _⟩, super.clause.of_proof pr,
 super.solve_with_goal {} axs
 
 -- set_option pp.all true
-set_option profiler true
+-- set_option profiler true
 -- set_option trace.type_context.is_def_eq true
 -- set_option trace.type_context.is_def_eq_detail true
 
@@ -391,6 +388,6 @@ end interactive
 end tactic
 
 -- set_option trace.super true
-set_option profiler true
-example (x y : ℤ) : x + y = y + x :=
-by hammer3 20
+-- set_option profiler true
+-- example (x y : ℤ) : x + y = y + x :=
+-- by hammer3 20
