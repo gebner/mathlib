@@ -3,7 +3,7 @@ import tactic.core super.utils data.equiv.basic data.vector
 instance sort.inhabited : inhabited (Sort*) :=
 ⟨pempty⟩
 
-instance int.inhabited : inhabited ℤ := ⟨0⟩
+instance int.inhabited' : inhabited ℤ := ⟨0⟩
 
 open tactic
 
@@ -279,13 +279,16 @@ meta def has_var_idx : hol_tm → ℕ → bool
 | (cast t a) n := a.has_var_idx n
 | (var i) n := i = n
 
-meta def has_vars : hol_tm → bool
-| (con _ _) := ff
-| (lcon _) := ff
-| (app a b) := a.has_vars || b.has_vars
-| (lam x t a) := a.has_vars
-| (cast t a) := a.has_vars
-| (var i) := tt
+meta def has_var_core : hol_tm → ℕ → bool
+| (con _ _) n := ff
+| (lcon _) n := ff
+| (app a b) n := a.has_var_core n || b.has_var_core n
+| (lam x t a) n := a.has_var_core (n+1)
+| (cast t a) n := a.has_var_core n
+| (var i) n := i ≥ n
+
+meta def has_var (t : hol_tm) : bool :=
+t.has_var_core 0
 
 meta def app' : hol_tm → hol_tm → hol_tm
 | (lam x t a) b := a.instantiate_var b
@@ -487,22 +490,36 @@ meta def simplify_type : hol_ty → simpl hol_ty
   pure $ if b = `(Prop) then hol_ty.tbool else hol_ty.base b
 | hol_ty.tbool := pure hol_ty.tbool
 
+meta def replace_inst_by_true (e : hol_tm) (lctx : list hol_ty) : tactic hol_tm :=
+if e.has_var ∨ e.ty_core lctx ≠ hol_ty.tbool then pure e else do
+e' ← e.to_expr,
+has_inst ← option.is_some <$> (try_core $ mk_instance e' <|>
+  (do `(nonempty %%t) ← pure e', mk_instance t)),
+pure $ if has_inst then true else e
+
 meta def simplify : hol_tm → list hol_ty → simpl hol_tm
 | (imp a b) lctx := do
   a ← simplify a lctx,
   match a with
   | true := simplify b lctx
-  | _ := imp <$> state_t.lift (ensure_bool_core lctx a) <*>
-          (simplify b lctx >>= state_t.lift ∘ ensure_bool_core lctx)
+  | _ := do
+      a ← state_t.lift $ ensure_bool_core lctx a,
+      b ← simplify b lctx,
+      match b with
+      | true := pure true
+      | _ := pure $ imp a b
+      end
   end
-| e@(app (con (expr.const ``_root_.nonempty [l]) ty) t) lctx :=
-  if l = level.zero then simplify t lctx else do
-  let c : expr := expr.const ``_root_.nonempty [l],
-  t ← simplify t lctx,
-  t' ← state_t.lift t.to_expr,
-  has_inst ← option.is_some <$> state_t.lift (try_core $ mk_instance (c t') <|> mk_instance t'),
-  pure $ if has_inst then true else safe_app (con c ty) t hol_ty.tbool lctx
-| e@(app a b) lctx := (λ a b, safe_app a b (e.ty_core lctx) lctx) <$> simplify a lctx <*> simplify b lctx
+-- | e@(app (con (expr.const ``_root_.nonempty [l]) ty) t) lctx :=
+--   if l = level.zero then simplify t lctx else do
+--   let c : expr := expr.const ``_root_.nonempty [l],
+--   t ← simplify t lctx,
+--   t' ← state_t.lift t.to_expr,
+--   has_inst ← option.is_some <$> state_t.lift (try_core $ mk_instance (c t') <|> mk_instance t'),
+--   pure $ if has_inst then true else safe_app (con c ty) t hol_ty.tbool lctx
+| e@(app a b) lctx := do
+  e ← (λ a b, safe_app a b (e.ty_core lctx) lctx) <$> simplify a lctx <*> simplify b lctx,
+  state_t.lift $ replace_inst_by_true e lctx
 | (lam x t a) lctx := do
   t' ← simplify_type t,
   lam x t' <$> simplify a (t' :: lctx)
@@ -511,7 +528,9 @@ meta def simplify : hol_tm → list hol_ty → simpl hol_tm
 | lc@(lcon (hol_lcon.all t)) lctx := (lcon ∘ hol_lcon.all) <$> simplify_type t
 | lc@(lcon (hol_lcon.ex t)) lctx := (lcon ∘ hol_lcon.ex) <$> simplify_type t
 | lc@(lcon _) lctx := pure lc
-| (con n t) lctx := con <$> canonize n <*> simplify_type t
+| (con n t) lctx := do
+  e ← con <$> canonize n <*> simplify_type t,
+  state_t.lift $ replace_inst_by_true e lctx
 | (cast t a) lctx := simplify a lctx
 
 #eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma t >>= trace

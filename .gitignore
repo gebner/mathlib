@@ -7,3 +7,4 @@ all.lean
 lint_mathlib.lean
 nolints.lean
 *.depend
+hammer_eval*

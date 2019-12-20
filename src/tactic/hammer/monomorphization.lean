@@ -132,20 +132,15 @@ meta def monom_core {α} (nargs : rb_map name ℕ) (cheads : rb_map name (list e
 | e cont :=
 -- if ¬ e.has_meta_var ∧ ¬ e.has_level_mvar then cont else
 let fn := e.get_app_fn, fnn := get_head_name fn, as := e.get_app_args in
--- do trace fn, trace nargs, trace cheads,
 match (nargs.find fnn, cheads.find fnn) with
 | (some n, some chs) := do
   e' ← instantiate_mvars $ mk_app fn (as.take n),
-  -- trace (e, n, chs),
   if ¬ e'.has_meta_var ∧ ¬ e'.has_level_mvar then
     (as.drop n).foldl (λ cont a, monom_core a cont) cont
   else do
     res1 ← (collect_successes chs $ λ ch, do
-      trace (ch, e'),
       unify ch e',
-      trace "ok",
       (as.drop n).foldl (λ cont a, monom_core a cont) cont),
-    -- trace res1.length,
     res2 ← retrieve_or_else [] $
       (as.drop n).foldl (λ cont a, monom_core a cont) cont,
     pure $ res1 ++ res2
@@ -170,7 +165,6 @@ meta def monom' (nargs : rb_map name ℕ) (cheads : rb_map name (list expr)) :
     | _ := cont prf
     end
 | ty prf cont :=
--- do trace ty,
   monom_core nargs cheads ty $ (λ x, [x]) <$> cont prf
 
 meta def monom (nargs : rb_map name ℕ) (cheads : rb_map name (list expr))
@@ -185,18 +179,13 @@ pure prf
 
 meta def monomorphization_round (lems : list expr) : tactic (list expr) := do
 cs ← _root_.consts_and_local_consts <$> lems.mmap infer_type,
--- trace cs,
 nargs ← rb_map.of_list <$> cs.mmap (λ c, do t ← infer_type c, pure (get_head_name c, num_mono_args t)),
--- trace nargs,
 cheads ← lems.mmap (λ lem, gather_constant_heads nargs <$> infer_type lem),
 let cheads := (cheads.join.group_by_native get_head_name).map list.dup_native,
--- trace cheads,
 lems' ← lems.mmap $ λ lem, monom nargs cheads lem,
 lems' ← lems'.join.mmap (λ lem, do t ← infer_type lem, pure (t, lem)),
 let lems' := (lems'.group_by_native prod.fst).to_list.map (λ ⟨k, vs⟩, vs.head.2),
 let lems' := lems'.dup_native,
--- trace lems',
--- lems'.mmap infer_type >>= trace,
 pure lems'
 
 meta def monomorphize (lems : list expr) (rounds := 2) : tactic (list expr) := do
@@ -238,7 +227,6 @@ meta def intern_here : ∀ (lctx : list expr) (e : expr), intern expr
   | some nf := pure nf
   | _ := do
     n ← intern.fresh_name (hint_name e),
-    -- state_t.lift $ trace (n,e),
     c ← state_t.lift $ pose n none e,
     state_t.modify $ λ st, { nfs := c :: nfs, ..st },
     pure c
@@ -434,13 +422,11 @@ sort_decls ← sorts.mmap (λ c, do
   c' ← to_tf0.con_name c,
   pure $ tptpify_thf_ann "type" ("ty_" ++ c')
     (tptpify_binop ":" c' "$tType")),
--- state_t.lift $ trace (cs, lems),
 ty_decls ← cs.mmap (λ ⟨c, t⟩, do
   t' ← to_tf0_ty t,
   c' ← to_tf0.con_name c,
   pure $ tptpify_thf_ann "type" ("ty_" ++ c') (tptpify_binop ":" c' t')),
 lems ← state_t.lift $ lems.mfilter (λ ⟨pr, ty⟩, is_prop ty),
--- state_t.lift $ trace lems,
 axs ← lems.mmap (λ ⟨pr, ty⟩, do
   n ← to_tf0.ax_name pr,
   ann ← tptpify_thf_ann "axiom" n <$> to_tf0_tm [] ty,
@@ -459,7 +445,6 @@ meta def mk_monom_file (axs : list name) : tactic (format × list (string × exp
 goal ← retrieve (revert_all >> target),
 let axs := goal.constants.filter is_good_const ++ axs,
 axs ← close_under_references axs,
--- trace $ (axs.map name.to_string).qsort (λ a b, a < b),
 repeat (intro1 >> skip),
 (do tgt ← target, when (tgt ≠ `(false)) $
   mk_mapp ``classical.by_contradiction [some tgt] >>= eapply >> intro1 >> skip),
@@ -470,7 +455,6 @@ lems' ← monomorphize lems 2,
 
 meta def filter_lemmas2_core (tptp : format) (ax_names : list (string × expr × expr)) :
   tactic (list (expr × expr)) := do
--- trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 -- (failure : tactic unit),
