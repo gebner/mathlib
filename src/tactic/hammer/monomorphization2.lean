@@ -24,7 +24,7 @@ namespace hammer
 
 meta structure polym_lem :=
 (cs : list expr)
-(prop : hol_tm)
+(prop : ehol_tm)
 
 namespace polym_lem
 
@@ -33,7 +33,7 @@ private meta def c_score : expr → ℕ
 | (expr.const ``nonempty _) := 900
 | e := 800 - e.get_weight
 
-meta def of_hol_tm (thm : hol_tm) : polym_lem := do
+meta def of_hol_tm (thm : ehol_tm) : polym_lem := do
 let cs := (do c ← thm.exprs, guard c.has_meta_var, pure c),
 let cs := cs.dup_native,
 let cs := cs.merge_sort (λ a b, c_score a < c_score b),
@@ -76,15 +76,17 @@ meta def is_monom : monom3_fact → bool
 
 meta def to_string : monom3_fact → string
 | (con c) := "con " ++ c.to_string
-| (polym_lem n s thm pl) := (to_fmt "polym_lem " ++ pl.prop.to_format s.fmt_expr).to_string
+| (polym_lem n s thm pl) :=
+  (to_fmt "polym_lem " ++
+    @hol_tm.to_format _ _ ⟨s.pp⟩ ⟨s.pp⟩ pl.prop).to_string
 
 end monom3_fact
 
 meta def monom3_loop :
-  rb_map expr (expr × hol_tm) →
+  rb_map expr (expr × ehol_tm) →
   list monom3_fact →
   rb_map monom3_key monom3_fact →
-  rb_map monom3_key monom3_fact → ℕ → list (expr × hol_tm)
+  rb_map monom3_key monom3_fact → ℕ → list (expr × ehol_tm)
 | done new active passive n :=
 let new_monom := (do
   monom3_fact.polym_lem n s thm ⟨[], tm⟩ ← new | [],
@@ -122,24 +124,24 @@ meta def monom2_core {α} (cheads : list expr) :
     monom2_core es cont
   end
 
-meta def monom2 (cheads : list expr) (lem : (expr × polym_lem)) : tactic (list (expr × hol_tm)) := do
+meta def monom2 (cheads : list expr) (lem : (expr × polym_lem)) : tactic (list (expr × ehol_tm)) := do
 retrieve_or_else [] $
 monom2_core cheads lem.2.cs $ do
 prop ← lem.2.prop.instantiate_mvars,
 guard $ ¬ prop.has_expr_meta_var,
 pure [(lem.1, prop)]
 
-meta def monomorphization2_round (lems : list (expr × polym_lem)) : tactic (list (expr × hol_tm)) := do
+meta def monomorphization2_round (lems : list (expr × polym_lem)) : tactic (list (expr × ehol_tm)) := do
 let cs := (do (n,l) ← lems, c ← l.prop.exprs, guard $ ¬ c.has_meta_var, pure c).dup_native,
 lems' ← list.join <$> lems.mmap (monom2 cs),
 lems' ← lems'.mmap (λ ⟨n, lem⟩, do t ← lem.to_expr, pure (t, n, lem)),
 let lems' := (lems'.dup_by_native prod.fst).map prod.snd,
 pure lems'
 
-meta def simplify_lems (lems : list (expr × hol_tm)) (do_canon := tt) : tactic (list (expr × hol_tm)) :=
+meta def simplify_lems (lems : list (expr × ehol_tm)) (do_canon := tt) : tactic (list (expr × ehol_tm)) :=
 prod.fst <$> state_t.run (lems.mmap (λ ⟨n, l⟩, prod.mk n <$> l.simplify [])) {do_canon := do_canon}
 
-meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list (expr × hol_tm)) := do
+meta def monomorphize2 (lems : list expr) (rounds := 2) : tactic (list (expr × ehol_tm)) := do
 lems ← lems.mmap (λ n, prod.mk n <$> (infer_type n >>= hol_tm.of_lemma)),
 lems ← simplify_lems lems ff,
 let lems := lems.map (λ ⟨n, tm⟩, (n, polym_lem.of_hol_tm tm)),
@@ -148,7 +150,7 @@ rounds.iterate (λ lems', do lems' ← lems',
       lems'.map (λ ⟨n,l⟩, prod.mk n (polym_lem.of_hol_tm l))))
   (pure [])
 
-meta def monomorphize3 (lems : list expr) (max_iters := 1000) : tactic (list (expr × hol_tm)) := do
+meta def monomorphize3 (lems : list expr) (max_iters := 1000) : tactic (list (expr × ehol_tm)) := do
 new ← lems.mmap (λ pr, retrieve $ do
   t ← infer_type pr,
   pl ← polym_lem.of_lemma t,
@@ -182,21 +184,21 @@ meta def to_tf0.sort_name' (e : expr) : to_tf0 string :=
 to_tf0.name'_core e (λ n, "t" ++ tptpify_name n)
 
 meta mutual def to_tf0_hol_ty, to_tf0_hol_ty_fun
-with to_tf0_hol_ty : hol_ty → to_tf0 format
+with to_tf0_hol_ty : ehol_ty → to_tf0 format
 | hol_ty.tbool := pure "$o"
 | (hol_ty.base t) := format.of_string <$> to_tf0.sort_name' t
 | e@(hol_ty.arr _ _) := format.paren' <$> to_tf0_hol_ty_fun e
-with to_tf0_hol_ty_fun : hol_ty → to_tf0 format
+with to_tf0_hol_ty_fun : ehol_ty → to_tf0 format
 | (hol_ty.arr a b) := do
   a' ← to_tf0_hol_ty a,
   b' ← to_tf0_hol_ty_fun b,
   pure $ a' ++ format.space ++ ">" ++ format.line ++ b'
 | a := to_tf0_hol_ty a
 
-@[pattern] meta def bin_lc (lc : hol_lcon) (a b : hol_tm) : hol_tm :=
+@[pattern] meta def bin_lc (lc : hol_lcon expr) (a b : ehol_tm) : ehol_tm :=
 hol_tm.app (hol_tm.app (hol_tm.lcon lc) a) b
 
-meta def to_tf0_legalize : hol_tm → list hol_ty → tactic hol_tm
+meta def to_tf0_legalize : ehol_tm → list ehol_ty → tactic ehol_tm
 | e@(hol_tm.lcon hol_lcon.true) lctx := pure e
 | e@(hol_tm.lcon hol_lcon.false) lctx := pure e
 | e@(hol_tm.var i) lctx := pure e
@@ -219,7 +221,7 @@ meta def to_tf0_legalize : hol_tm → list hol_ty → tactic hol_tm
   to_tf0_legalize (hol_tm.app (hol_tm.con n (ta.arr t)) a) lctx
 | (hol_tm.lcon lc) lctx := do e ← lc.to_expr, to_tf0_legalize (hol_tm.con e lc.ty) lctx
 
-meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
+meta def to_tf0_hol_tm : list (name × ehol_ty) → ehol_tm → to_tf0 format
 | lctx (hol_tm.lcon hol_lcon.true) := pure "$true"
 | lctx (hol_tm.lcon hol_lcon.false) := pure "$false"
 | lctx (hol_tm.var i) :=
@@ -257,7 +259,7 @@ meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
     to_tf0_hol_ty t <*> to_tf0_hol_tm ((x', t) :: lctx) a
 | lctx e := state_t.lift $ do e ← pp e, fail $ to_fmt "to_tf0_hol_tm: unsupported: " ++ e
 
-meta def to_tf0_file2 (lems : list (expr × hol_tm)) : to_tf0 (format × list (string × expr × hol_tm)) := do
+meta def to_tf0_file2 (lems : list (expr × ehol_tm)) : to_tf0 (format × list (string × expr × ehol_tm)) := do
 lems ← state_t.lift $ lems.mmap $ λ ⟨n, l⟩, prod.mk n <$> to_tf0_legalize l [],
 let sorts := (lems.map (hol_tm.sorts ∘ prod.snd)).join.dup_native,
 sort_decls ← sorts.mmap (λ c, do
@@ -265,6 +267,7 @@ sort_decls ← sorts.mmap (λ c, do
   pure $ tptpify_thf_ann "type" ("ty_" ++ c')
     (tptpify_binop ":" c' "$tType")),
 let cs := (lems.map (hol_tm.consts ∘ prod.snd)).join.dup_native,
+state_t.lift $ trace (to_fmt cs),
 ty_decls ← cs.mmap (λ ⟨c, t⟩, do
   t' ← to_tf0_hol_ty t,
   c' ← to_tf0.con_name' c,
@@ -278,7 +281,7 @@ let tptp := format.join $
   .intersperse (format.line ++ format.line),
 pure (tptp, axs.map (λ ⟨n,pr,ax,ann⟩, (n, pr, ax)))
 
-meta def mk_monom2_file (axs : list name) : tactic (format × list (string × expr × hol_tm)) := do
+meta def mk_monom2_file (axs : list name) : tactic (format × list (string × expr × ehol_tm)) := do
 goal ← retrieve (revert_all >> target),
 let axs := goal.constants.filter is_good_const ++ axs,
 axs ← close_under_references axs,
@@ -288,10 +291,11 @@ repeat (intro1 >> skip),
 lems ← (++) <$> axs.mmap mk_const <*> local_context,
 lems' ← monomorphize2 lems,
 lems'' ← simplify_lems lems',
+trace lems'',
 (to_tf0_file2 lems'').run
 
-meta def filter_lemmas3_core (tptp : format) (ax_names : list (string × expr × hol_tm)) :
-  tactic (list (expr × hol_tm)) := do
+meta def filter_lemmas3_core (tptp : format) (ax_names : list (string × expr × ehol_tm)) :
+  tactic (list (expr × ehol_tm)) := do
 trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
@@ -303,11 +307,11 @@ tptp_out ← timetac "eprover-ho took" $ exec_cmd "bash" ["-c",
 let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, (ax_names.find n).to_list
 
-meta def filter_lemmas3 (axs : list name) : tactic (list (expr × hol_tm)) := do
+meta def filter_lemmas3 (axs : list name) : tactic (list (expr × ehol_tm)) := do
 (tptp, ax_names) ← mk_monom2_file axs,
 filter_lemmas3_core tptp ax_names
 
-meta def find_lemmas3 (max := 10) : tactic (list (expr × hol_tm)) := do
+meta def find_lemmas3 (max := 10) : tactic (list (expr × ehol_tm)) := do
 axs ← timetac "Premise selection took" $ retrieve $
   revert_all >> target >>= select_for_goal,
 let axs := (axs.take max).map (λ a, a.1),
@@ -315,7 +319,7 @@ let axs := (axs.take max).map (λ a, a.1),
 trace axs,
 filter_lemmas3 axs
 
-meta def reconstruct3 (axs : list (expr × hol_tm)) : tactic unit :=
+meta def reconstruct3 (axs : list (expr × ehol_tm)) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
 axs ← axs.mmap $ λ ⟨pr, _⟩, super.clause.of_proof pr,
 super.solve_with_goal {} axs

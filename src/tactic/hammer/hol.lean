@@ -1,20 +1,27 @@
 import tactic.core super.utils data.equiv.basic data.vector
 
-instance sort.inhabited : inhabited (Sort*) :=
+universes u v
+
+instance sort.inhabited : inhabited (Sort u) :=
 ⟨pempty⟩
 
 instance int.inhabited' : inhabited ℤ := ⟨0⟩
 
 open tactic
 
-meta def tactic_state.fmt_expr (s : tactic_state) (e : expr) : format :=
-match pp e s with
+meta def tactic_state.pp {α} [has_to_tactic_format α] (s : tactic_state) (a : α) : format :=
+match pp a s with
 | result.success f _ := f
-| result.exception _ _ _ := to_fmt e
+| result.exception (some msg) _ _ := msg ()
+| result.exception _ _ _ := "<exception>"
 end
 
-meta def tactic.get_expr_formatter : tactic (expr → format) :=
-tactic_state.fmt_expr <$> read
+meta def tactic.get_formatter {α} [has_to_tactic_format α] : tactic (α → format) :=
+tactic_state.pp <$> read
+
+meta def tactic_state.fmt_expr (s : tactic_state) (e : expr) : format := s.pp e
+
+meta def tactic.get_expr_formatter : tactic (expr → format) := tactic.get_formatter
 
 meta def expr.has_mvar (n : name) (e : expr) : tactic bool := do
 ms ← e.sorted_mvars,
@@ -25,53 +32,59 @@ open tactic
 namespace hammer
 
 @[derive decidable_eq]
-meta inductive hol_ty
-| tbool
-| base (t : expr)
-| arr (a b : hol_ty)
+inductive hol_ty (α : Type u) : Type u
+| tbool {} : hol_ty
+| base (t : α) : hol_ty
+| arr (a b : hol_ty) : hol_ty
+
+@[reducible] meta def ehol_ty := hol_ty expr
 
 namespace hol_ty
 
-meta instance : inhabited hol_ty := ⟨tbool⟩
+variables {α : Type u} {β : Type v}
 
-meta def to_format (ef : expr → format) : hol_ty → format
+instance : inhabited (hol_ty α) := ⟨tbool⟩
+
+meta def to_format (ef : α → format) : hol_ty α → format
 | tbool := "o"
 | (base t) := ((ef t).bracket "『" "』").group
 | (arr a b) := (to_format a ++ format.space ++ "→" ++ format.line ++ to_format b).paren.group
 
-meta instance : has_to_format hol_ty := ⟨to_format to_fmt⟩
-meta instance : has_repr hol_ty := ⟨to_string ∘ to_fmt⟩
-meta instance : has_to_string hol_ty := ⟨to_string ∘ to_fmt⟩
-meta instance : has_to_tactic_format hol_ty := ⟨λ e, to_format <$> get_expr_formatter <*> pure e⟩
+meta instance [has_to_format α] : has_to_format (hol_ty α) := ⟨to_format to_fmt⟩
+meta instance [has_to_format α] : has_repr (hol_ty α) := ⟨to_string ∘ to_fmt⟩
+meta instance [has_to_format α] : has_to_string (hol_ty α) := ⟨to_string ∘ to_fmt⟩
+meta instance {α : Type} [has_to_tactic_format α] : has_to_tactic_format (hol_ty α) :=
+⟨λ e, to_format <$> get_formatter <*> pure e⟩
 
-meta def of_expr : expr → hol_ty
+meta def of_expr : expr → hol_ty expr
 | (expr.sort level.zero) := tbool
 | t@(expr.pi n bi a b) :=
   if b.has_var then base t else
   arr (of_expr a) (of_expr b)
 | t := base t
 
-meta def map (f : expr → expr) : hol_ty → hol_ty
+def map (f : α → β) : hol_ty α → hol_ty β
 | tbool := tbool
 | (base t) := base (f t)
 | (arr a b) := arr a.map b.map
 
-meta def all_expr (f : expr → bool) : hol_ty → bool
+def all_expr (f : α → bool) : hol_ty α → bool
 | tbool := tt
 | (base t) := f t
 | (arr a b) := all_expr a && all_expr b
 
-meta def to_expr : hol_ty → expr
+meta def to_expr : hol_ty expr → expr
 | tbool := `(Prop)
 | (base t) := t
 | (arr a b) := a.to_expr.imp b.to_expr
 
-meta def sorts : hol_ty → list expr
+def sorts : hol_ty α → list α
 | tbool := []
 | (base t) := [t]
 | (arr a b) := a.sorts ++ b.sorts
 
-protected meta def lt : hol_ty → hol_ty → bool
+protected def lt [has_lt α] [decidable_rel ((<) : α → α → Prop)] [_root_.decidable_eq α]
+  : hol_ty α → hol_ty α → bool
 | _ tbool := ff
 | tbool _ := tt
 | (base t) (base t') := t < t'
@@ -79,22 +92,31 @@ protected meta def lt : hol_ty → hol_ty → bool
 | _ (base t) := ff
 | (arr a b) (arr a' b') := lt a a' ∨ (a = a' ∧ lt b b')
 
-meta instance : has_lt hol_ty := ⟨λ a b, a.lt b⟩
+meta instance  [has_lt α] [decidable_rel ((<) : α → α → Prop)] [_root_.decidable_eq α] :
+  has_lt (hol_ty α) :=
+⟨λ a b, a.lt b⟩
 
 end hol_ty
 
 @[derive decidable_eq]
-meta inductive hol_lcon
-| true | false
-| neg | and | or | imp | iff
-| eq (t : hol_ty)
-| all (t : hol_ty) | ex (t : hol_ty)
+inductive hol_lcon (α : Type u) : Type u
+| true {}: hol_lcon
+| false {} : hol_lcon
+| neg {} : hol_lcon
+| and {} : hol_lcon
+| or {} : hol_lcon
+| imp {} : hol_lcon
+| iff {} : hol_lcon
+| eq (t : hol_ty α) : hol_lcon
+| all (t : hol_ty α) : hol_lcon
+| ex (t : hol_ty α) : hol_lcon
 
 namespace hol_lcon
+variables {α : Type u} {β : Type v}
 
-meta instance : inhabited hol_lcon := ⟨true⟩
+instance : inhabited (hol_lcon α) := ⟨true⟩
 
-meta def to_format : hol_lcon → format
+def to_string : hol_lcon α → string
 | true := "true"
 | false := "false"
 | neg := "¬"
@@ -106,12 +128,12 @@ meta def to_format : hol_lcon → format
 | (all t) := "∀"
 | (ex t) := "∃"
 
-meta instance : has_repr hol_lcon := ⟨to_string ∘ to_format⟩
-meta instance : has_to_string hol_lcon := ⟨to_string ∘ to_format⟩
-meta instance : has_to_format hol_lcon := ⟨to_format⟩
-meta instance : has_to_tactic_format hol_lcon := ⟨pure ∘ to_format⟩
+meta instance : has_repr (hol_lcon α) := ⟨to_string⟩
+meta instance : has_to_string (hol_lcon α) := ⟨to_string⟩
+meta instance : has_to_format (hol_lcon α) := ⟨to_fmt ∘ to_string⟩
+meta instance : has_to_tactic_format (hol_lcon α) := ⟨λ lc, pure lc.to_string⟩
 
-meta def to_expr : hol_lcon → tactic expr
+meta def to_expr : hol_lcon expr → tactic expr
 | true := pure `(_root_.true)
 | false := pure `(_root_.false)
 | neg := pure `(_root_.not)
@@ -125,7 +147,7 @@ meta def to_expr : hol_lcon → tactic expr
   (expr.pi `x binder_info.default t.to_expr ((expr.var 1).app (expr.var 0))))
 
 open hol_ty
-meta def ty : hol_lcon → hol_ty
+def ty : hol_lcon α → hol_ty α
 | true := tbool
 | false := tbool
 | neg := tbool.arr tbool
@@ -137,19 +159,25 @@ meta def ty : hol_lcon → hol_ty
 | (all t) := (t.arr tbool).arr tbool
 | (ex t) := (t.arr tbool).arr tbool
 
-meta def map (f : expr → expr) : hol_lcon → hol_lcon
+def map (f : α → β) : hol_lcon α → hol_lcon β
 | (all t) := all (t.map f)
 | (ex t) := ex (t.map f)
 | (eq t) := eq (t.map f)
-| lc := lc
+| true := true
+| false := false
+| neg := neg
+| and := and
+| or := or
+| imp := imp
+| iff := iff
 
-meta def all_expr (f : expr → bool) : hol_lcon → bool
+def all_expr (f : α → bool) : hol_lcon α → bool
 | (all t) := t.all_expr f
 | (ex t) := t.all_expr f
 | (eq t) := t.all_expr f
 | _ := tt
 
-meta def sorts : hol_lcon → list expr
+def sorts : hol_lcon α → list α
 | (all t) := t.sorts
 | (ex t) := t.sorts
 | (eq t) := t.sorts
@@ -157,42 +185,50 @@ meta def sorts : hol_lcon → list expr
 
 end hol_lcon
 
-@[derive decidable_eq]
-meta inductive hol_tm
-| con (n : expr) (t : hol_ty)
-| lcon (lc : hol_lcon)
-| cast (t : hol_ty) (a : hol_tm)
-| app (a b : hol_tm)
-| lam (x : name) (t : hol_ty) (a : hol_tm)
-| var (i : ℕ)
+inductive hol_tm (α : Type u) (β : Type v) : Type (max u v)
+| con (n : β) (t : hol_ty α) : hol_tm
+| lcon {} (lc : hol_lcon α) : hol_tm
+| cast (t : hol_ty α) (a : hol_tm) : hol_tm
+| app (a b : hol_tm) : hol_tm
+| lam (x : name) (t : hol_ty α) (a : hol_tm) : hol_tm
+| var {} (i : ℕ) : hol_tm
+
+@[reducible] meta def ehol_tm := hol_tm expr expr
 
 namespace hol_tm
+variables {α : Type u} {β : Type v}
 
-meta instance : inhabited hol_tm := ⟨lcon hol_lcon.true⟩
+meta instance [decidable_eq α] [decidable_eq β] : decidable_eq (hol_tm α β) :=
+by mk_dec_eq_instance
 
-meta def all (x : name) (t : hol_ty) (a : hol_tm) : hol_tm :=
+instance : inhabited (hol_tm α β) := ⟨lcon hol_lcon.true⟩
+
+def all (x : name) (t : hol_ty α) (a : hol_tm α β) : hol_tm α β :=
 app (lcon $ hol_lcon.all t) (lam x t a)
 
-@[pattern] meta def imp (a b : hol_tm) : hol_tm :=
+@[pattern] def imp (a b : hol_tm α β) : hol_tm α β :=
 app (app (lcon $ hol_lcon.imp) a) b
 
-@[pattern] meta def true : hol_tm :=
+@[pattern] def true : hol_tm α β :=
 lcon hol_lcon.true
 
-@[pattern] meta def false : hol_tm :=
+@[pattern] def false : hol_tm α β :=
 lcon hol_lcon.false
 
-meta def to_format_core (ef : expr → format) : hol_tm → list name → format
+section
+variables [has_to_format α] [has_to_format β]
+
+meta def to_format_core : hol_tm α β → list name → format
 | (app (lcon (hol_lcon.all t)) (lam x _ a)) lctx :=
-  ((to_fmt "∀ " ++ to_fmt x ++ " :" ++ format.line ++ t.to_format ef ++ ",").group ++
+  ((to_fmt "∀ " ++ to_fmt x ++ " :" ++ format.line ++ to_fmt t ++ ",").group ++
     format.line ++ to_format_core a (x::lctx)).paren.group
 | (imp a b) lctx := (to_format_core a lctx ++ format.space ++ "→" ++ format.line ++ b.to_format_core lctx).paren.group
-| (con n t) _ := ((ef n).bracket "「" "」").group
+| (con n t) _ := ((to_fmt n).bracket "「" "」").group
 | (lcon lc) _ := to_fmt lc
-| (cast t a) lctx := (to_format_core a lctx ++ format.space ++ ":" ++ format.line ++ t.to_format ef).paren.group
+| (cast t a) lctx := (to_format_core a lctx ++ format.space ++ ":" ++ format.line ++ to_fmt t).paren.group
 | (app a b) lctx := (to_format_core a lctx ++ format.line ++ to_format_core b lctx).paren.group
 | (lam x t a) lctx :=
-  ((to_fmt "λ " ++ to_fmt x ++ " :" ++ format.line ++ t.to_format ef ++ ",").group ++
+  ((to_fmt "λ " ++ to_fmt x ++ " :" ++ format.line ++ to_fmt t ++ ",").group ++
     format.line ++ to_format_core a (x::lctx)).paren.group
 | (var i) lctx :=
   match lctx.nth i with
@@ -200,15 +236,19 @@ meta def to_format_core (ef : expr → format) : hol_tm → list name → format
   | _ := "#" ++ i
   end
 
-meta def to_format (ef : expr → format) (t : hol_tm) : format :=
-to_format_core ef t []
+meta def to_format (t : hol_tm α β) : format :=
+to_format_core t []
 
-meta instance : has_repr hol_tm := ⟨to_string ∘ to_format to_fmt⟩
-meta instance : has_to_string hol_tm := ⟨to_string ∘ to_format to_fmt⟩
-meta instance : has_to_format hol_tm := ⟨to_format to_fmt⟩
-meta instance : has_to_tactic_format hol_tm := ⟨λ e, to_format <$> get_expr_formatter <*> pure e⟩
+meta instance : has_to_format (hol_tm α β) := ⟨to_format⟩
+meta instance : has_repr (hol_tm α β) := ⟨to_string ∘ to_fmt⟩
+meta instance : has_to_string (hol_tm α β) := ⟨to_string ∘ to_fmt⟩
 
-meta def to_expr : hol_tm → tactic expr
+end
+
+meta instance {α} {β} [has_to_tactic_format α] [has_to_tactic_format β] : has_to_tactic_format (hol_tm α β) :=
+⟨λ e, do f ← get_formatter, g ← get_formatter, pure $ @to_format _ _ ⟨f⟩ ⟨g⟩ e⟩
+
+meta def to_expr : ehol_tm → tactic expr
 | (con n t) := pure n
 | (lcon lc) := lc.to_expr
 | (app a b) := expr.app <$> a.to_expr <*> b.to_expr
@@ -216,46 +256,52 @@ meta def to_expr : hol_tm → tactic expr
 | (lam x t a) := expr.lam x binder_info.default t.to_expr <$> a.to_expr
 | (var i) := pure (expr.var i)
 
-meta def map (f : expr → expr) : hol_tm → hol_tm
-| (con n t) := con (f n) (t.map f)
+def map {α' β'} (f : α → α') (g : β → β') : hol_tm α β → hol_tm α' β'
+| (con n t) := con (g n) (t.map f)
 | (lcon lc) := lcon (lc.map f)
 | (app a b) := app a.map b.map
 | (cast t a) := cast (t.map f) a.map
 | (lam x t a) := lam x (t.map f) a.map
 | (var i) := var i
 
-meta def all_expr (f : expr → bool) : hol_tm → bool
-| (con n t) := f n && t.all_expr f
+def map' (f : α → β) : hol_tm α α → hol_tm β β :=
+map f f
+
+def all_expr (f : α → bool) (g : β → bool) : hol_tm α β → bool
+| (con n t) := g n && t.all_expr f
 | (lcon lc) := lc.all_expr f
 | (app a b) := a.all_expr && b.all_expr
 | (cast t a) := t.all_expr f && a.all_expr
 | (lam x t a) := t.all_expr f && a.all_expr
 | (var i) := tt
 
-meta def instantiate_expr_var (t : hol_tm) (e : expr) : hol_tm :=
-t.map (λ f, f.instantiate_var e)
+def all_expr' (f : α → bool) : hol_tm α α → bool :=
+all_expr f f
 
-meta def abstract_local (t : hol_tm) (l : name) : hol_tm :=
-t.map (λ f, f.abstract_local l)
+meta def instantiate_expr_var (t : ehol_tm) (e : expr) : ehol_tm :=
+t.map' (λ f, f.instantiate_var e)
 
-meta def has_expr (t : hol_tm) (p : expr → bool) : bool :=
-bnot $ t.all_expr $ λ e, bnot (p e)
+meta def abstract_local (t : hol_tm expr expr) (l : name) : hol_tm _ _ :=
+t.map' (λ f, f.abstract_local l)
 
-meta def has_expr_var (t : hol_tm) : bool :=
+meta def has_expr (t : hol_tm expr expr) (p : expr → bool) : bool :=
+bnot $ t.all_expr' $ λ e, bnot (p e)
+
+meta def has_expr_var (t : hol_tm expr expr) : bool :=
 t.has_expr expr.has_var
 
-meta def has_expr_meta_var (t : hol_tm) : bool :=
+meta def has_expr_meta_var (t : hol_tm expr expr) : bool :=
 t.has_expr expr.has_meta_var
 
-meta def instantiate_mvars (t : hol_tm) : tactic hol_tm := do
+meta def instantiate_mvars (t : hol_tm expr expr) : tactic ehol_tm := do
 s ← read,
-pure $ t.map $ λ e,
+pure $ t.map' $ λ e,
   match tactic.instantiate_mvars e s with
   | result.success e _ := e
   | result.exception _ _ _ := e
   end
 
-meta def lift_core (off : ℕ) : hol_tm → ℕ → hol_tm
+def lift_core (off : ℕ) : hol_tm α β → ℕ → hol_tm α β
 | e@(con _ _) _ := e
 | e@(lcon _) _ := e
 | (var i) n := var (if i < n then i else i+off)
@@ -263,7 +309,7 @@ meta def lift_core (off : ℕ) : hol_tm → ℕ → hol_tm
 | (lam x t a) n := lam x t (a.lift_core (n+1))
 | (cast t a) n := cast t (a.lift_core n)
 
-meta def instantiate_var_core (z : hol_tm) : hol_tm → ℕ → hol_tm
+def instantiate_var_core (z : hol_tm α β) : hol_tm α β → ℕ → hol_tm α β
 | e@(con _ _) n := e
 | e@(lcon _) n := e
 | (app a b) n := app (a.instantiate_var_core n) (b.instantiate_var_core n)
@@ -271,10 +317,10 @@ meta def instantiate_var_core (z : hol_tm) : hol_tm → ℕ → hol_tm
 | (cast t a) n := cast t (a.instantiate_var_core n)
 | (var i) n := if i = n then lift_core n z 0 else if i < n then var i else var (i-1)
 
-meta def instantiate_var (t z : hol_tm) : hol_tm :=
+def instantiate_var (t z : hol_tm α β) : hol_tm α β :=
 instantiate_var_core z t 0
 
-meta def has_var_idx : hol_tm → ℕ → bool
+def has_var_idx : hol_tm α β → ℕ → bool
 | (con _ _) n := ff
 | (lcon _) n := ff
 | (app a b) n := a.has_var_idx n || b.has_var_idx n
@@ -282,7 +328,7 @@ meta def has_var_idx : hol_tm → ℕ → bool
 | (cast t a) n := a.has_var_idx n
 | (var i) n := i = n
 
-meta def has_var_core : hol_tm → ℕ → bool
+def has_var_core : hol_tm α β → ℕ → bool
 | (con _ _) n := ff
 | (lcon _) n := ff
 | (app a b) n := a.has_var_core n || b.has_var_core n
@@ -290,14 +336,14 @@ meta def has_var_core : hol_tm → ℕ → bool
 | (cast t a) n := a.has_var_core n
 | (var i) n := i ≥ n
 
-meta def has_var (t : hol_tm) : bool :=
+def has_var (t : hol_tm α β) : bool :=
 t.has_var_core 0
 
-meta def app' : hol_tm → hol_tm → hol_tm
+def app' : hol_tm α β → hol_tm α β → hol_tm α β
 | (lam x t a) b := a.instantiate_var b
 | a b := app a b
 
-meta def sorts : hol_tm → list expr
+def sorts : hol_tm α β → list α
 | (con n t) := t.sorts
 | (lcon lc) := lc.sorts
 | (app a b) := a.sorts ++ b.sorts
@@ -305,7 +351,7 @@ meta def sorts : hol_tm → list expr
 | (cast t a) := t.sorts ++ a.sorts
 | (var i) := []
 
-meta def consts : hol_tm → list (expr × hol_ty)
+def consts : hol_tm α β → list (β × hol_ty α)
 | (con n t) := [(n, t)]
 | (lcon lc) := []
 | (app a b) := a.consts ++ b.consts
@@ -313,32 +359,32 @@ meta def consts : hol_tm → list (expr × hol_ty)
 | (cast t a) := a.consts
 | (var i) := []
 
-meta def exprs (t : hol_tm) := t.sorts ++ t.consts.map prod.fst
+def exprs (t : hol_tm α α) := t.sorts ++ t.consts.map prod.fst
 
-meta def ty_core : hol_tm → list hol_ty → hol_ty
+def ty_core : hol_tm α β → list (hol_ty α) → hol_ty α
 | (con _ t) _ := t
 | (lcon lc) _ := lc.ty
 | (app a b) lctx :=
   match a.ty_core lctx with
   | (hol_ty.arr _ ret_ty) := ret_ty
-  | _ := hol_ty.base (expr.mk_sorry `(Type))
+  | _ := default _
   end
 | (cast t _) _ := t
 | (lam x t a) lctx := t.arr (a.ty_core (t :: lctx))
-| (var i) lctx := (lctx.nth i).get_or_else (hol_ty.base (expr.mk_sorry `(Type)))
+| (var i) lctx := (lctx.nth i).get_or_else (default _)
 
-meta def ty (t : hol_tm) : hol_ty :=
+def ty (t : hol_tm α β) : hol_ty α :=
 t.ty_core []
 
-meta def get_app_fn : hol_tm → hol_tm
+def get_app_fn : hol_tm α β → hol_tm α β
 | (app a _) := get_app_fn a
 | f := f
 
-private meta def get_app_args_aux : list hol_tm → hol_tm → list hol_tm
+private def get_app_args_aux : list (hol_tm α β) → hol_tm α β → list (hol_tm α β)
 | r (app f a) := get_app_args_aux (a::r) f
 | r e         := r
 
-meta def get_app_args : hol_tm → list hol_tm :=
+def get_app_args : hol_tm α β → list (hol_tm α β) :=
 get_app_args_aux []
 
 meta def is_type (t : expr) : tactic bool := do
@@ -346,11 +392,11 @@ s ← infer_type t,
 s ← whnf s,
 pure $ match s with expr.sort _ := tt | _ := ff end
 
-meta def mk_const (e : expr) : tactic hol_tm := do
+meta def mk_const (e : expr) : tactic ehol_tm := do
 t ← infer_type e,
 pure $ con e (hol_ty.of_expr t)
 
-meta def ensure_bool_core (lctx : list hol_ty) (e : hol_tm) : tactic hol_tm :=
+meta def ensure_bool_core (lctx : list (hol_ty expr)) (e : ehol_tm) : tactic ehol_tm :=
 let t := e.ty_core lctx in
 if t = hol_ty.tbool then pure e else do
 u ← whnf t.to_expr,
@@ -362,10 +408,10 @@ match u with
   fail $ to_fmt "ensure_bool_core: not a type: " ++ e
 end
 
-meta def ensure_type (t : hol_ty) (e : hol_tm) (lctx : list hol_ty) : hol_tm :=
+meta def ensure_type (t : hol_ty expr) (e : ehol_tm) (lctx : list (hol_ty expr)) : ehol_tm :=
 if e.ty_core lctx = t then e else cast t e
 
-meta def safe_app (a b : hol_tm) (expected : hol_ty) (lctx : list hol_ty) : hol_tm :=
+meta def safe_app (a b : ehol_tm) (expected : hol_ty expr) (lctx : list (hol_ty expr)) : ehol_tm :=
 match a.ty_core lctx with
 | (hol_ty.arr ta1 ta2) :=
   app a $ ensure_type ta1 b lctx
@@ -373,7 +419,7 @@ match a.ty_core lctx with
   app (cast (hol_ty.arr (b.ty_core lctx) expected) a) b
 end
 
-meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
+meta def of_expr_core : expr → list (hol_ty expr) → list name → tactic ehol_tm
 | (expr.app (expr.const ``eq _) t) lctx lctx_lean :=
   pure $ lcon $ hol_lcon.eq $ hol_ty.of_expr t
 | e@(expr.app (expr.app (expr.const ``Exists _) t) p) lctx lctx_lean := do
@@ -444,7 +490,7 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
 | (expr.var i) _ _ := fail "of_expr_core (var _)"
 | e lctx lctx_lean := mk_const e
 
-meta def of_lemma_core_top : expr → list hol_ty → list name → tactic hol_tm
+meta def of_lemma_core_top : expr → list (hol_ty expr) → list name → tactic ehol_tm
 | (expr.pi n bi t e) lctx lctx_lean := do
   t' ← of_expr_core t lctx lctx_lean,
   ne' ← ensure_bool_core lctx t',
@@ -474,7 +520,7 @@ meta def of_lemma_core_top : expr → list hol_ty → list name → tactic hol_t
   e' ← of_expr_core e lctx lctx_lean,
   ensure_bool_core lctx e'
 
-meta def of_lemma (e : expr) : tactic hol_tm :=
+meta def of_lemma (e : expr) : tactic ehol_tm :=
 of_lemma_core_top e [] []
 
 open native
@@ -502,7 +548,7 @@ match canon.find e with
   end
 end
 
-meta def simplify_type : hol_ty → simpl hol_ty
+meta def simplify_type : hol_ty expr → simpl (hol_ty expr)
 | (hol_ty.arr a b) := hol_ty.arr <$> simplify_type a <*> simplify_type b
 | (hol_ty.base b) :=
   if b = `(Prop) then pure hol_ty.tbool else do
@@ -510,14 +556,14 @@ meta def simplify_type : hol_ty → simpl hol_ty
   pure $ if b = `(Prop) then hol_ty.tbool else hol_ty.base b
 | hol_ty.tbool := pure hol_ty.tbool
 
-meta def replace_inst_by_true (e : hol_tm) (lctx : list hol_ty) : tactic hol_tm :=
+meta def replace_inst_by_true (e : ehol_tm) (lctx : list (hol_ty expr)) : tactic ehol_tm :=
 if e.has_var ∨ e.ty_core lctx ≠ hol_ty.tbool then pure e else do
 e' ← e.to_expr,
 has_inst ← option.is_some <$> (try_core $ mk_instance e' <|>
   (do `(nonempty %%t) ← pure e', mk_instance t)),
 pure $ if has_inst then true else e
 
-meta def simplify : hol_tm → list hol_ty → simpl hol_tm
+meta def simplify : hol_tm expr expr → list (hol_ty expr) → simpl ehol_tm
 | (imp a b) lctx := do
   a ← simplify a lctx,
   match a with
