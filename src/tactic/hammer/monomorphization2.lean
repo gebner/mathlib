@@ -157,29 +157,30 @@ new ← lems.mmap (λ pr, retrieve $ do
   pure $ monom3_fact.polym_lem pr s thm pl),
 pure $ monom3_loop mk_rb_map new mk_rb_map mk_rb_map max_iters
 
-meta def to_tf0.name'_core (e : expr) (f : name → string) : to_tf0 string := do
+meta def to_tf0.name'_core (e : expr) (t : hol_ty) (f : name → string) : to_tf0 string := do
 ns ← to_tf0_state.ns <$> state_t.get,
-match ns.find e with
+let e' := `(@id.{1} %%t.to_expr %%e),
+match ns.find e' with
 | some n := pure n
 | none := do
   state_t.modify $ λ st, { fresh_idx := st.fresh_idx + 1, ..st },
   idx ← to_tf0_state.fresh_idx <$> state_t.get,
   let n := f (name.mk_numeral (unsigned.of_nat idx) (hint_name e)),
-  state_t.modify $ λ st, { ns := st.ns.insert e n, ..st },
+  state_t.modify $ λ st, { ns := st.ns.insert e' n, ..st },
   pure n
 end
 
-meta def to_tf0.var_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e var_tptpify_name
+meta def to_tf0.var_name' (n : name) (t : hol_ty) : to_tf0 string :=
+to_tf0.name'_core (expr.local_const n n binder_info.default t.to_expr) t var_tptpify_name
 
-meta def to_tf0.con_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e fn_tptpify_name
+meta def to_tf0.con_name' (e : expr) (t : hol_ty) : to_tf0 string :=
+to_tf0.name'_core e t fn_tptpify_name
 
 meta def to_tf0.ax_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e ax_tptpify_name
+to_tf0.name'_core e hol_ty.tbool ax_tptpify_name
 
 meta def to_tf0.sort_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e (λ n, "t" ++ tptpify_name n)
+to_tf0.name'_core e hol_ty.tbool (λ n, "t" ++ tptpify_name n)
 
 meta mutual def to_tf0_hol_ty, to_tf0_hol_ty_fun
 with to_tf0_hol_ty : hol_ty → to_tf0 format
@@ -224,8 +225,8 @@ meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
 | lctx (hol_tm.lcon hol_lcon.false) := pure "$false"
 | lctx (hol_tm.var i) :=
   let ⟨n, t⟩ := lctx.inth i in
-  format.of_string <$> to_tf0.var_name' (expr.local_const n n binder_info.default t.to_expr)
-| lctx (hol_tm.con n _) := format.of_string <$> to_tf0.con_name' n
+  format.of_string <$> to_tf0.var_name' n t
+| lctx (hol_tm.con n t) := format.of_string <$> to_tf0.con_name' n t
 | lctx (hol_tm.app (hol_tm.app (hol_tm.lcon $ hol_lcon.eq _) x) y) :=
   tptpify_binop "=" <$> to_tf0_hol_tm lctx x <*> to_tf0_hol_tm lctx y
 | lctx (hol_tm.app (hol_tm.app (hol_tm.lcon $ hol_lcon.and) x) y) :=
@@ -241,11 +242,11 @@ meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
   pure $ format.paren' $ "~" ++ format.line ++ x'
 | lctx (hol_tm.app (hol_tm.lcon $ hol_lcon.ex _) (hol_tm.lam x t a)) := do
   let x' := x.mk_numeral lctx.length,
-  tptpify_quant' "?" <$> to_tf0.var_name' (expr.local_const x' x' binder_info.default t.to_expr) <*>
+  tptpify_quant' "?" <$> to_tf0.var_name' x' t <*>
     to_tf0_hol_ty t <*> to_tf0_hol_tm ((x', t) :: lctx) a
 | lctx (hol_tm.app (hol_tm.lcon $ hol_lcon.all _) (hol_tm.lam x t a)) := do
   let x' := x.mk_numeral lctx.length,
-  tptpify_quant' "!" <$> to_tf0.var_name' (expr.local_const x' x' binder_info.default t.to_expr) <*>
+  tptpify_quant' "!" <$> to_tf0.var_name' x' t <*>
     to_tf0_hol_ty t <*> to_tf0_hol_tm ((x', t) :: lctx) a
 | lctx e@(hol_tm.app _ _) :=
   let fn := e.get_app_fn, as := e.get_app_args in
@@ -253,7 +254,7 @@ meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
     <$> (fn :: as).mmap (to_tf0_hol_tm lctx)
 | lctx (hol_tm.lam x t a) := do
   let x' := x.mk_numeral lctx.length,
-  tptpify_quant' "^" <$> to_tf0.var_name' (expr.local_const x' x' binder_info.default t.to_expr) <*>
+  tptpify_quant' "^" <$> to_tf0.var_name' x' t <*>
     to_tf0_hol_ty t <*> to_tf0_hol_tm ((x', t) :: lctx) a
 | lctx e := state_t.lift $ do e ← pp e, fail $ to_fmt "to_tf0_hol_tm: unsupported: " ++ e
 
@@ -267,7 +268,7 @@ sort_decls ← sorts.mmap (λ c, do
 let cs := (lems.map (hol_tm.consts ∘ prod.snd)).join.dup_native,
 ty_decls ← cs.mmap (λ ⟨c, t⟩, do
   t' ← to_tf0_hol_ty t,
-  c' ← to_tf0.con_name' c,
+  c' ← to_tf0.con_name' c t,
   pure $ tptpify_thf_ann "type" ("ty_" ++ c') (tptpify_binop ":" c' t')),
 axs ← lems.mmap (λ ⟨pr, ax⟩, do
   n ← to_tf0.ax_name' pr,
