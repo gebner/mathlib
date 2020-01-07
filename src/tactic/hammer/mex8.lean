@@ -1,4 +1,4 @@
-import tactic.hammer.monomorphization data.nat.gcd data.real.basic
+import tactic.hammer data.nat.gcd data.real.basic
 
 example (x y : ℕ) : x ∣ x * y :=
-by hammer2
+by hammer3
