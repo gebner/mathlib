@@ -1,4 +1,4 @@
-import tactic.hammer.monomorphization tactic.suggest tactic.hammer.monomorphization2
+import tactic.hammer tactic.suggest tactic.finish
 
 namespace hammer
 open tactic
@@ -10,6 +10,13 @@ meta def eval_library_search (for_env : environment) (_ : string) : tactic unit 
 set_env_core for_env,
 library_search >>= trace,
 skip
+
+meta def eval_finish (for_env : environment) (_ : string) : tactic unit := do
+set_env_core $
+  if for_env.contains ``tactic.interactive.finish then for_env else
+  for_env.import' (module_info.of_module_name `tactic.finish ""),
+`[finish],
+done
 
 meta def eval_simp (for_env : environment) (_ : string) : tactic unit := do
 set_env_core for_env,
@@ -141,6 +148,7 @@ cs ← expr.constants <$> declaration.value <$> get_decl n,
 trace cs,
 my_timetac (to_string n ++ " refl 0") eval_refl,
 my_timetac (to_string n ++ " library_search 0") (eval_library_search env),
+my_timetac (to_string n ++ " finish 0") (eval_finish env),
 my_timetac (to_string n ++ " simp 0") (eval_simp env),
 my_timetac (to_string n ++ " super 10") (eval_super env 10),
 my_timetac (to_string n ++ " super oracle") (eval_super_oracle env cs),
