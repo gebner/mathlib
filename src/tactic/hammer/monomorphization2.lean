@@ -197,6 +197,18 @@ with to_tf0_hol_ty_fun : hol_ty → to_tf0 format
 @[pattern] meta def bin_lc (lc : hol_lcon) (a b : hol_tm) : hol_tm :=
 hol_tm.app (hol_tm.app (hol_tm.lcon lc) a) b
 
+meta def to_tf0_bailout : hol_tm → list hol_ty → tactic hol_tm
+| e [] := do e' ← e.to_expr, pure (hol_tm.con e' e.ty)
+| e (t::lctx) :=
+  if ¬ e.has_var_idx 0 then do
+    e' ← to_tf0_bailout (e.instantiate_var (hol_tm.var 0)) lctx,
+    pure $ e'.lift_core 1 0
+  else do
+    l ← mk_local' `x binder_info.default t.to_expr,
+    let l' := hol_tm.con l t,
+    e' ← to_tf0_bailout (hol_tm.lam `x t e) lctx,
+    pure $ (e'.lift_core 1 0).app (hol_tm.var 0)
+
 meta def to_tf0_legalize : hol_tm → list hol_ty → tactic hol_tm
 | e@(hol_tm.lcon hol_lcon.true) lctx := pure e
 | e@(hol_tm.lcon hol_lcon.false) lctx := pure e
@@ -213,7 +225,9 @@ meta def to_tf0_legalize : hol_tm → list hol_ty → tactic hol_tm
 | (hol_tm.app (hol_tm.lcon $ hol_lcon.all t0) (hol_tm.lam x t a)) lctx :=
   (hol_tm.app (hol_tm.lcon $ hol_lcon.all t0) ∘ hol_tm.lam x t) <$> to_tf0_legalize a (t :: lctx)
 | (hol_tm.app a b) lctx := hol_tm.app <$> to_tf0_legalize a lctx <*> to_tf0_legalize b lctx
-| (hol_tm.lam x t a) lctx := hol_tm.lam x t <$> to_tf0_legalize a (t :: lctx)
+| e@(hol_tm.lam x t a) lctx :=
+  to_tf0_bailout e lctx
+  -- hol_tm.lam x t <$> to_tf0_legalize a (t :: lctx)
 | (hol_tm.cast t a) lctx := do
   let ta := a.ty_core lctx,
   n ← to_expr ``(cast sorry : %%ta.to_expr → %%t.to_expr),
