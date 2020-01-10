@@ -272,21 +272,38 @@ meta def to_tf0_hol_tm : list (name × hol_ty) → hol_tm → to_tf0 format
     to_tf0_hol_ty t <*> to_tf0_hol_tm ((x', t) :: lctx) a
 | lctx e := state_t.lift $ do e ← pp e, fail $ to_fmt "to_tf0_hol_tm: unsupported: " ++ e
 
+meta def prefix_with_fmt_comment (e : format) (f : format) : to_tf0 format := do
+let e' := e.to_string (options.mk.set_nat `pp.width 1000000),
+pure $ to_fmt ("% " ++ e') ++ "\n" ++ f
+
+meta def prefix_with_expr_comment (e : expr) (f : format) : to_tf0 format := do
+e' ← state_t.lift $ pp e,
+prefix_with_fmt_comment e' f
+
+meta def prefix_with_expr_ty_comment (e : expr) (ty : expr) (f : format) : to_tf0 format := do
+e' ← state_t.lift $ pp e,
+ty' ← state_t.lift $ pp ty,
+prefix_with_fmt_comment (e' ++ " : " ++ ty') f
+
 meta def to_tf0_file2 (lems : list (expr × hol_tm)) : to_tf0 (format × list (string × expr × hol_tm)) := do
 lems ← state_t.lift $ lems.mmap $ λ ⟨n, l⟩, prod.mk n <$> to_tf0_legalize l [],
 let sorts := (lems.map (hol_tm.sorts ∘ prod.snd)).join.dup_native,
 sort_decls ← sorts.mmap (λ c, do
   c' ← to_tf0.sort_name' c,
-  pure $ tptpify_thf_ann "type" ("ty_" ++ c')
-    (tptpify_binop ":" c' "$tType")),
+  prefix_with_expr_comment c $
+    tptpify_thf_ann "type" ("ty_" ++ c')
+      (tptpify_binop ":" c' "$tType")),
 let cs := (lems.map (hol_tm.consts ∘ prod.snd)).join.dup_native,
 ty_decls ← cs.mmap (λ ⟨c, t⟩, do
   t' ← to_tf0_hol_ty t,
   c' ← to_tf0.con_name' c t,
-  pure $ tptpify_thf_ann "type" ("ty_" ++ c') (tptpify_binop ":" c' t')),
+  prefix_with_expr_ty_comment c t.to_expr $
+    tptpify_thf_ann "type" ("ty_" ++ c') (tptpify_binop ":" c' t')),
 axs ← lems.mmap (λ ⟨pr, ax⟩, do
   n ← to_tf0.ax_name' pr,
   ann ← tptpify_thf_ann "axiom" n <$> to_tf0_hol_tm [] ax,
+  ax' ← state_t.lift $ pp ax,
+  ann ← prefix_with_fmt_comment ax' ann,
   pure (n, pr, ax, ann)),
 let tptp := format.join $
   ((sort_decls ++ ty_decls ++ axs.map (λ ⟨n,pr,ax,ann⟩, ann)).map format.group)
