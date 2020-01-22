@@ -273,8 +273,29 @@ begin
   exact squeeze_zero (λ t, abs_nonneg _) (λ t, abs_norm_sub_norm_le _ _) (lim_norm x)
 end
 
+lemma filter.tendsto.norm {β : Type*} {l : filter β} {f : β → α} {a : α} (h : tendsto f l (𝓝 a)) :
+  tendsto (λ x, ∥f x∥) l (𝓝 ∥a∥) :=
+tendsto.comp continuous_norm.continuous_at h
+
 lemma continuous_nnnorm : continuous (nnnorm : α → nnreal) :=
 continuous_subtype_mk _ continuous_norm
+
+lemma filter.tendsto.nnnorm {β : Type*} {l : filter β} {f : β → α} {a : α} (h : tendsto f l (𝓝 a)) :
+  tendsto (λ x, nnnorm (f x)) l (𝓝 (nnnorm a)) :=
+tendsto.comp continuous_nnnorm.continuous_at h
+
+/-- If `∥y∥→∞`, then we can assume `y≠x` for any fixed `x`. -/
+lemma ne_mem_of_tendsto_norm_at_top {l : filter γ} {f : γ → α}
+  (h : tendsto (λ y, ∥f y∥) l at_top) (x : α) :
+  {y | f y ≠ x} ∈ l :=
+begin
+  have : {y | 1 + ∥x∥ ≤ ∥f y∥} ∈ l := h (mem_at_top (1 + ∥x∥)),
+  apply mem_sets_of_superset this,
+  assume y hy hxy,
+  subst x,
+  simp at hy,
+  exact not_le_of_lt zero_lt_one hy
+end
 
 /-- A normed group is a uniform additive group, i.e., addition and subtraction are uniformly
 continuous. -/
@@ -408,7 +429,7 @@ is_monoid_hom.map_pow norm a
 
 @[simp] lemma norm_prod {β : Type*} [normed_field α] (s : finset β) (f : β → α) :
   ∥s.prod f∥ = s.prod (λb, ∥f b∥) :=
-eq.symm (finset.prod_hom norm)
+eq.symm (s.prod_hom norm)
 
 @[simp] lemma norm_div {α : Type*} [normed_field α] (a b : α) : ∥a/b∥ = ∥a∥/∥b∥ :=
 if hb : b = 0 then by simp [hb] else
@@ -555,10 +576,11 @@ section normed_space
 
 section prio
 set_option default_priority 100 -- see Note [default priority]
+-- see Note[vector space definition] for why we extend `module`.
 /-- A normed space over a normed field is a vector space endowed with a norm which satisfies the
 equality `∥c • x∥ = ∥c∥ ∥x∥`. -/
 class normed_space (α : Type*) (β : Type*) [normed_field α] [normed_group β]
-  extends vector_space α β :=
+  extends module α β :=
 (norm_smul : ∀ (a:α) (b:β), norm (a • b) = has_norm.norm a * norm b)
 end prio
 
@@ -661,7 +683,7 @@ instance : normed_space α (E × F) :=
   add_smul := λ r x y, prod.ext (add_smul _ _ _) (add_smul _ _ _),
   smul_add := λ r x y, prod.ext (smul_add _ _ _) (smul_add _ _ _),
   ..prod.normed_group,
-  ..prod.vector_space }
+  ..prod.module }
 
 /-- The product of finitely many normed spaces is a normed space, with the sup norm. -/
 instance pi.normed_space {E : ι → Type*} [fintype ι] [∀i, normed_group (E i)]

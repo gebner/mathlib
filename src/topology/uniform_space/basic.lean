@@ -380,7 +380,7 @@ calc (a, b) ∈ closure t ↔ (𝓝 (a, b) ⊓ principal t ≠ ⊥) : by simp [c
   end
   ... ↔ (∀s ∈ 𝓤 α, ∃x, x ∈ set.prod {y : α | (a, y) ∈ s} {x : α | (x, b) ∈ s} ∩ t) :
   begin
-    rw [lift'_inf_principal_eq, lift'_neq_bot_iff],
+    rw [lift'_inf_principal_eq, lift'_ne_bot_iff],
     apply forall_congr, intro s, rw [ne_empty_iff_exists_mem],
     exact monotone_inter (monotone_prod monotone_preimage monotone_preimage) monotone_const
   end
@@ -872,7 +872,7 @@ begin
     rcases mem_Union.1 (hc₂ hx) with ⟨i, h⟩,
     rcases comp_mem_uniformity_sets (is_open_uniformity.1 (hc₁ i) x h) with ⟨m', hm', mm'⟩,
     exact mem_bUnion hm' ⟨i, _, hm', λ y hy, mm' hy rfl⟩ },
-  rcases compact_elim_finite_subcover_image hs hu₁ hu₂ with ⟨b, bu, b_fin, b_cover⟩,
+  rcases hs.elim_finite_subcover_image hu₁ hu₂ with ⟨b, bu, b_fin, b_cover⟩,
   refine ⟨_, Inter_mem_sets b_fin bu, λ x hx, _⟩,
   rcases mem_bUnion_iff.1 (b_cover hx) with ⟨n, bn, i, m, hm, h⟩,
   refine ⟨i, λ y hy, h _⟩,

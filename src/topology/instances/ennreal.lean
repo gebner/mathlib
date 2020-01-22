@@ -28,7 +28,7 @@ Note: this is different from the `emetric_space` topology. The `emetric_space` t
 instance : topological_space ennreal :=
 topological_space.generate_from {s | ∃a, s = {b | a < b} ∨ s = {b | b < a}}
 
-instance : orderable_topology ennreal := ⟨rfl⟩
+instance : order_topology ennreal := ⟨rfl⟩
 
 instance : t2_space ennreal := by apply_instance -- short-circuit type class inference
 
@@ -51,7 +51,7 @@ instance : second_countable_topology ennreal :=
 lemma embedding_coe : embedding (coe : nnreal → ennreal) :=
 ⟨⟨begin
   refine le_antisymm _ _,
-  { rw [orderable_topology.topology_eq_generate_intervals ennreal,
+  { rw [order_topology.topology_eq_generate_intervals ennreal,
       ← coinduced_le_iff_le_induced],
     refine le_generate_from (assume s ha, _),
     rcases ha with ⟨a, rfl | rfl⟩,
@@ -59,11 +59,11 @@ lemma embedding_coe : embedding (coe : nnreal → ennreal) :=
     { cases a; simp [none_eq_top, some_eq_coe, is_open_lt'] },
     show is_open {b : nnreal | ↑b < a},
     { cases a; simp [none_eq_top, some_eq_coe, is_open_gt', is_open_const] } },
-  { rw [orderable_topology.topology_eq_generate_intervals nnreal],
+  { rw [order_topology.topology_eq_generate_intervals nnreal],
     refine le_generate_from (assume s ha, _),
     rcases ha with ⟨a, rfl | rfl⟩,
-    exact ⟨{b : ennreal | ↑a < b}, @is_open_lt' ennreal ennreal.topological_space _ _ _, by simp⟩,
-    exact ⟨{b : ennreal | b < ↑a}, @is_open_gt' ennreal ennreal.topological_space _ _ _, by simp⟩ }
+    exact ⟨Ioi a, is_open_Ioi, by simp [Ioi]⟩,
+    exact ⟨Iio a, is_open_Iio, by simp [Iio]⟩ }
   end⟩,
   assume a b, coe_eq_coe.1⟩
 
@@ -77,7 +77,7 @@ have {a : ennreal | a ≠ ⊤} = range (coe : nnreal → ennreal),
   from set.ext $ assume a, by cases a; simp [none_eq_top, some_eq_coe],
 this ▸ mem_nhds_sets is_open_ne_top coe_ne_top
 
-lemma tendsto_coe {f : filter α} {m : α → nnreal} {a : nnreal} :
+@[elim_cast] lemma tendsto_coe {f : filter α} {m : α → nnreal} {a : nnreal} :
   tendsto (λa, (m a : ennreal)) f (𝓝 ↑a) ↔ tendsto m f (𝓝 a) :=
 embedding_coe.tendsto_nhds_iff.symm
 
@@ -126,11 +126,15 @@ match s, hs with
 | _, ⟨a,      or.inr rfl⟩, hr := (not_top_lt $ show ⊤ < a, from hr).elim
 end
 
+lemma tendsto_nat_nhds_top : tendsto (λ n : ℕ, ↑n) at_top (𝓝 ∞) :=
+tendsto_nhds_top $ λ n, mem_at_top_sets.2
+  ⟨n+1, λ m hm, ennreal.coe_nat_lt_coe_nat.2 $ nat.lt_of_succ_le hm⟩
+
 lemma nhds_top : 𝓝 ∞ = ⨅a ≠ ∞, principal (Ioi a) :=
-nhds_top_orderable.trans $ by simp [lt_top_iff_ne_top, Ioi]
+nhds_top_order.trans $ by simp [lt_top_iff_ne_top, Ioi]
 
 lemma nhds_zero : 𝓝 (0 : ennreal) = ⨅a ≠ 0, principal (Iio a) :=
-nhds_bot_orderable.trans $ by simp [bot_lt_iff_ne_bot, Iio]
+nhds_bot_order.trans $ by simp [bot_lt_iff_ne_bot, Iio]
 
 -- using Icc because
 -- • don't have 'Ioo (x - ε) (x + ε) ∈ 𝓝 x' unless x > 0
@@ -171,7 +175,7 @@ begin
     assume y, rintros ⟨h₁, h₂⟩, rw xbx at h₂, calc y ≤ b : h₂ ... < a : ba },
 end
 
-/-- Characterization of neighborhoods for `ennreal` numbers. See also `tendsto_orderable`
+/-- Characterization of neighborhoods for `ennreal` numbers. See also `tendsto_order`
 for a version with strict inequalities. -/
 protected theorem tendsto_nhds {f : filter α} {u : α → ennreal} {a : ennreal} (ha : a ≠ ⊤) :
   tendsto u f (𝓝 a) ↔ ∀ ε > 0, {x | (u x) ∈ Icc (a - ε) (a + ε)} ∈ f :=
@@ -255,7 +259,7 @@ by_cases
   (assume ha : a ≠ 0, ennreal.tendsto.mul tendsto_const_nhds (or.inl ha) hm hb)
 
 protected lemma continuous_inv : continuous (has_inv.inv : ennreal → ennreal) :=
-continuous_iff_continuous_at.2 $ λ a, tendsto_orderable.2
+continuous_iff_continuous_at.2 $ λ a, tendsto_order.2
 ⟨begin
   assume b hb,
   simp only [@ennreal.lt_inv_iff_lt_inv b],
@@ -272,6 +276,9 @@ end⟩
 ⟨λ h, by simpa only [function.comp, ennreal.inv_inv]
   using (ennreal.continuous_inv.tendsto a⁻¹).comp h,
   (ennreal.continuous_inv.tendsto a).comp⟩
+
+protected lemma tendsto_inv_nat_nhds_zero : tendsto (λ n : ℕ, (n : ennreal)⁻¹) at_top (𝓝 0) :=
+ennreal.inv_top ▸ ennreal.tendsto_inv_iff.2 tendsto_nat_nhds_top
 
 lemma Sup_add {s : set ennreal} (hs : s ≠ ∅) : Sup s + a = ⨆b∈s, b + a :=
 have Sup ((λb, b + a) '' s) = Sup s + a,
@@ -395,7 +402,7 @@ protected lemma coe_tsum {f : α → nnreal} : summable f → ↑(tsum f) = (∑
 | ⟨r, hr⟩ := by rw [tsum_eq_has_sum hr, ennreal.tsum_coe_eq hr]
 
 protected lemma has_sum : has_sum f (⨆s:finset α, s.sum f) :=
-tendsto_orderable.2
+tendsto_order.2
   ⟨assume a' ha',
     let ⟨s, hs⟩ := lt_supr_iff.mp ha' in
     mem_at_top_sets.mpr ⟨s, assume t ht, lt_of_lt_of_le hs $ finset.sum_le_sum_of_subset ht⟩,
@@ -407,8 +414,30 @@ tendsto_orderable.2
 
 @[simp] protected lemma summable : summable f := ⟨_, ennreal.has_sum⟩
 
+lemma tsum_coe_ne_top_iff_summable {f : β → nnreal} :
+  (∑ b, (f b:ennreal)) ≠ ∞ ↔ summable f :=
+begin
+  refine ⟨λ h, _, λ h, ennreal.coe_tsum h ▸ ennreal.coe_ne_top⟩,
+  lift (∑ b, (f b:ennreal)) to nnreal using h with a ha,
+  refine ⟨a, ennreal.has_sum_coe.1 _⟩,
+  rw ha,
+  exact has_sum_tsum ennreal.summable
+end
+
 protected lemma tsum_eq_supr_sum : (∑a, f a) = (⨆s:finset α, s.sum f) :=
 tsum_eq_has_sum ennreal.has_sum
+
+protected lemma tsum_eq_top_of_eq_top : (∃ a, f a = ∞) → (∑ a, f a) = ∞
+| ⟨a, ha⟩ :=
+begin
+  rw [ennreal.tsum_eq_supr_sum],
+  apply le_antisymm le_top,
+  convert le_supr (λ s:finset α, s.sum f) (finset.singleton a),
+  rw [finset.sum_singleton, ha]
+end
+
+protected lemma ne_top_of_tsum_ne_top (h : (∑ a, f a) ≠ ∞) (a : α) : f a ≠ ∞ :=
+λ ha, h $ ennreal.tsum_eq_top_of_eq_top ⟨a, ha⟩
 
 protected lemma tsum_sigma {β : α → Type*} (f : Πa, β a → ennreal) :
   (∑p:Σa, β a, f p.1 p.2) = (∑a b, f a b) :=
@@ -535,7 +564,7 @@ lemma has_sum_iff_tendsto_nat_of_nonneg {f : ℕ → ℝ} (hf : ∀i, 0 ≤ f i)
   have r_eq : r = r' := rfl,
   begin
     rw [f_eq, r_eq, nnreal.has_sum_coe, nnreal.has_sum_iff_tendsto_nat, ← nnreal.tendsto_coe],
-    simp only [nnreal.sum_coe],
+    simp only [nnreal.coe_sum],
     exact hfr
   end⟩
 
@@ -591,7 +620,7 @@ lemma emetric.cauchy_seq_iff_le_tendsto_0 [inhabited β] [semilattice_sup β] {s
     exact ⟨hm, hn⟩ },
   --Prove that it tends to `0`, by using the Cauchy property of `s`
   have D : tendsto b at_top (𝓝 0),
-  { refine tendsto_orderable.2 ⟨λa ha, absurd ha (ennreal.not_lt_zero), λε εpos, _⟩,
+  { refine tendsto_order.2 ⟨λa ha, absurd ha (ennreal.not_lt_zero), λε εpos, _⟩,
     rcases dense εpos with ⟨δ, δpos, δlt⟩,
     rcases hs δ δpos with ⟨N, hN⟩,
     refine filter.mem_at_top_sets.2 ⟨N, λn hn, _⟩,
@@ -610,7 +639,7 @@ begin
   /-b : ℕ → ℝ, b_bound : ∀ (n m N : ℕ), N ≤ n → N ≤ m → edist (s n) (s m) ≤ b N,
     b_lim : tendsto b at_top (𝓝 0)-/
   refine emetric.cauchy_seq_iff.2 (λε εpos, _),
-  have : {n | b n < ε} ∈ at_top := (tendsto_orderable.1 b_lim ).2 _ εpos,
+  have : {n | b n < ε} ∈ at_top := (tendsto_order.1 b_lim ).2 _ εpos,
   rcases filter.mem_at_top_sets.1 this with ⟨N, hN⟩,
   exact ⟨N, λm n hm hn, calc
     edist (s n) (s m) ≤ b N : b_bound n m N hn hm
@@ -620,7 +649,7 @@ end⟩
 lemma continuous_of_le_add_edist {f : α → ennreal} (C : ennreal)
   (hC : C ≠ ⊤) (h : ∀x y, f x ≤ f y + C * edist x y) : continuous f :=
 begin
-  refine continuous_iff_continuous_at.2 (λx, tendsto_orderable.2 ⟨_, _⟩),
+  refine continuous_iff_continuous_at.2 (λx, tendsto_order.2 ⟨_, _⟩),
   show ∀e, e < f x → {y : α | e < f y} ∈ 𝓝 x,
   { assume e he,
     let ε := min (f x - e) 1,
@@ -696,28 +725,35 @@ have tendsto (λp:α×α, edist p.1 p.2) (𝓝 (a, b)) (𝓝 (edist a b)),
   from continuous_iff_continuous_at.mp continuous_edist' (a, b),
 tendsto.comp (by rw [nhds_prod_eq] at this; exact this) (hf.prod_mk hg)
 
-/-- If `edist (f n) (f (n+1))` is bounded above by a summable function `d : ℕ → ℝ≥0`,
+lemma cauchy_seq_of_edist_le_of_tsum_ne_top {f : ℕ → α} (d : ℕ → ennreal)
+  (hf : ∀ n, edist (f n) (f n.succ) ≤ d n) (hd : tsum d ≠ ∞) :
+  cauchy_seq f :=
+begin
+  lift d to (ℕ → nnreal) using (λ i, ennreal.ne_top_of_tsum_ne_top hd i),
+  rw ennreal.tsum_coe_ne_top_iff_summable at hd,
+  exact cauchy_seq_of_edist_le_of_summable d hf hd
+end
+
+/-- If `edist (f n) (f (n+1))` is bounded above by a function `d : ℕ → ennreal`,
 then the distance from `f n` to the limit is bounded by `∑_{k=n}^∞ d k`. -/
-lemma edist_le_tsum_of_edist_le_of_tendsto {f : ℕ → α} (d : ℕ → nnreal)
-  (hf : ∀ n, edist (f n) (f n.succ) ≤ d n) (hd : summable d)
+lemma edist_le_tsum_of_edist_le_of_tendsto {f : ℕ → α} (d : ℕ → ennreal)
+  (hf : ∀ n, edist (f n) (f n.succ) ≤ d n)
   {a : α} (ha : tendsto f at_top (𝓝 a)) (n : ℕ) :
-  edist (f n) a ≤ ↑∑ m, d (n + m) :=
+  edist (f n) a ≤ ∑ m, d (n + m) :=
 begin
   refine le_of_tendsto at_top_ne_bot (tendsto_edist tendsto_const_nhds ha)
     (mem_at_top_sets.2 ⟨n, λ m hnm, _⟩),
   refine le_trans (edist_le_Ico_sum_of_edist_le hnm (λ k _ _, hf k)) _,
-  norm_cast,
   rw [finset.sum_Ico_eq_sum_range],
-  refine sum_le_tsum _ (λ _ _, nnreal.coe_nonneg _) _,
-  exact nnreal.summable_comp_injective hd (add_left_injective n)
+  exact sum_le_tsum _ (λ _ _, zero_le _) ennreal.summable
 end
 
-/-- If `edist (f n) (f (n+1))` is bounded above by a summable function `d : ℕ → ℝ≥0`,
+/-- If `edist (f n) (f (n+1))` is bounded above by a function `d : ℕ → ennreal`,
 then the distance from `f 0` to the limit is bounded by `∑_{k=0}^∞ d k`. -/
-lemma edist_le_tsum_of_edist_le_of_tendsto₀ {f : ℕ → α} (d : ℕ → nnreal)
-  (hf : ∀ n, edist (f n) (f n.succ) ≤ d n) (hd : summable d)
+lemma edist_le_tsum_of_edist_le_of_tendsto₀ {f : ℕ → α} (d : ℕ → ennreal)
+  (hf : ∀ n, edist (f n) (f n.succ) ≤ d n)
   {a : α} (ha : tendsto f at_top (𝓝 a)) :
-  edist (f 0) a ≤ ↑∑ m, d m :=
-by simpa using edist_le_tsum_of_edist_le_of_tendsto d hf hd ha 0
+  edist (f 0) a ≤ ∑ m, d m :=
+by simpa using edist_le_tsum_of_edist_le_of_tendsto d hf ha 0
 
 end --section

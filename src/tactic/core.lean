@@ -3,7 +3,7 @@ Copyright (c) 2018 Mario Carneiro. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Mario Carneiro, Simon Hudon, Scott Morrison, Keeley Hoek
 -/
-import data.dlist.basic category.basic meta.expr meta.rb_map data.bool
+import data.dlist.basic category.basic meta.expr meta.rb_map data.bool tactic.library_note
 
 namespace expr
 open tactic
@@ -1426,7 +1426,7 @@ open lean.parser interactive
 /-- `import_private foo from bar` finds a private declaration `foo` in the same file as `bar`
     and creates a local notation to refer to it.
 
-    `import_private foo`, looks for `foo` in all imported files. -/
+    `import_private foo` looks for `foo` in all imported files. -/
 @[user_command]
 meta def import_private_cmd (_ : parse $ tk "import_private") : lean.parser unit :=
 do n  ← ident,

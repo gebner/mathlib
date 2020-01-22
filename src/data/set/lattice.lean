@@ -18,7 +18,7 @@ namespace set
 
 instance lattice_set : complete_lattice (set α) :=
 { le     := (⊆),
-  lt     := λ x y, x ⊆ y ∧ ¬ y ⊆ x,
+  lt     := (⊂),
   sup    := (∪),
   inf    := (∩),
   top    := univ,
@@ -180,7 +180,7 @@ by rw [diff_eq, compl_Inter, inter_Union]; refl
 /- bounded unions and intersections -/
 
 theorem mem_bUnion_iff {s : set α} {t : α → set β} {y : β} :
-  y ∈ (⋃ x ∈ s, t x) ↔ ∃ x, x ∈ s ∧ y ∈ t x := by simp
+  y ∈ (⋃ x ∈ s, t x) ↔ ∃ x ∈ s, y ∈ t x := by simp
 
 theorem mem_bInter_iff {s : set α} {t : α → set β} {y : β} :
   y ∈ (⋂ x ∈ s, t x) ↔ ∀ x ∈ s, y ∈ t x := by simp
@@ -420,12 +420,6 @@ theorem inter_empty_of_inter_sUnion_empty {s t : set α} {S : set (set α)} (hs 
   s ∩ t = ∅ :=
 eq_empty_of_subset_empty $ by rw ← h; exact
 inter_subset_inter_right _ (subset_sUnion_of_mem hs)
-
-theorem Union_eq_sUnion_range (s : α → set β) : (⋃ i, s i) = ⋃₀ (range s) :=
-by rw [← image_univ, sUnion_image]; simp
-
-theorem Inter_eq_sInter_range {α I : Type} (s : I → set α) : (⋂ i, s i) = ⋂₀ (range s) :=
-by rw [← image_univ, sInter_image]; simp
 
 theorem range_sigma_eq_Union_range {γ : α → Type*} (f : sigma γ → β) :
   range f = ⋃ a, range (λ b, f ⟨a, b⟩) :=

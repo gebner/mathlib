@@ -54,6 +54,12 @@ instance smul.is_add_monoid_hom {r : α} : is_add_monoid_hom (λ x : β, r • x
 lemma semimodule.eq_zero_of_zero_eq_one (zero_eq_one : (0 : α) = 1) : x = 0 :=
 by rw [←one_smul α x, ←zero_eq_one, zero_smul]
 
+/-- R-linearity of finite sums of elements of an R-semimodule. -/
+lemma finset.sum_smul {α : Type*} {R : Type*} [semiring R] {M : Type*} [add_comm_monoid M]
+  [semimodule R M] (s : finset α) (r : R) (f : α → M) :
+    s.sum (λ (x : α), (r • (f x))) = r • (s.sum f) :=
+s.sum_hom _
+
 end semimodule
 
 section prio
@@ -177,7 +183,7 @@ by simp [map_neg, map_add]
 
 @[simp] lemma map_sum {ι} {t : finset ι} {g : ι → β} :
   f (t.sum g) = t.sum (λi, f (g i)) :=
-(finset.sum_hom f).symm
+(t.sum_hom f).symm
 
 include mδ
 
@@ -218,7 +224,7 @@ begin
 end
 
 --TODO: move
-lemma is_linear_map_smul' {α R : Type*} [add_comm_group α] [comm_ring R] [module R α] (a : α) :
+lemma is_linear_map_smul' {α R : Type*} [add_comm_group α] [ring R] [module R α] (a : α) :
   is_linear_map R (λ (c : R), c • a) :=
 begin
   refine is_linear_map.mk (λ x y, add_smul x y a) _,
@@ -303,10 +309,10 @@ instance : has_zero p := ⟨⟨0, zero_mem _⟩⟩
 instance : has_neg p := ⟨λx, ⟨-x.1, neg_mem _ x.2⟩⟩
 instance : has_scalar α p := ⟨λ c x, ⟨c • x.1, smul_mem _ c x.2⟩⟩
 
-@[simp] lemma coe_add (x y : p) : (↑(x + y) : β) = ↑x + ↑y := rfl
-@[simp] lemma coe_zero : ((0 : p) : β) = 0 := rfl
-@[simp] lemma coe_neg (x : p) : ((-x : p) : β) = -x := rfl
-@[simp] lemma coe_smul (r : α) (x : p) : ((r • x : p) : β) = r • ↑x := rfl
+@[simp, move_cast] lemma coe_add (x y : p) : (↑(x + y) : β) = ↑x + ↑y := rfl
+@[simp, elim_cast] lemma coe_zero : ((0 : p) : β) = 0 := rfl
+@[simp, move_cast] lemma coe_neg (x : p) : ((-x : p) : β) = -x := rfl
+@[simp, move_cast] lemma coe_smul (r : α) (x : p) : ((r • x : p) : β) = r • ↑x := rfl
 
 instance : add_comm_group p :=
 by refine {add := (+), zero := 0, neg := has_neg.neg, ..};
@@ -317,7 +323,7 @@ instance submodule_is_add_subgroup : is_add_subgroup (p : set β) :=
   add_mem  := p.add,
   neg_mem  := λ _, p.neg_mem }
 
-lemma coe_sub (x y : p) : (↑(x - y) : β) = ↑x - ↑y := by simp
+@[move_cast] lemma coe_sub (x y : p) : (↑(x - y) : β) = ↑x - ↑y := by simp
 
 instance : module α p :=
 by refine {smul := (•), ..};
@@ -356,15 +362,25 @@ lemma mul_mem_right (h : a ∈ I) : a * b ∈ I := mul_comm b a ▸ I.mul_mem_le
 
 end ideal
 
-section prio
-set_option default_priority 100 -- see Note [default priority]
+library_note "vector space definition"
+"Vector spaces are defined as an `abbreviation` for modules,
+if the base ring is a field.
+(A previous definition made `vector_space` a structure
+defined to be `module`.)
+This has as advantage that vector spaces are completely transparant
+for type class inference, which means that all instances for modules
+are immediately picked up for vector spaces as well.
+A cosmetic disadvantage is that one can not extend vector spaces an sich,
+in definitions such as `normed_space`.
+The solution is to extend `module` instead."
+
 /-- A vector space is the same as a module, except the scalar ring is actually
   a field. (This adds commutativity of the multiplication and existence of inverses.)
   This is the traditional generalization of spaces like `ℝ^n`, which have a natural
   addition operation and a way to multiply them by real numbers, but no multiplication
   operation between vectors. -/
-class vector_space (α : Type u) (β : Type v) [discrete_field α] [add_comm_group β] extends module α β
-end prio
+abbreviation vector_space (α : Type u) (β : Type v) [discrete_field α] [add_comm_group β] :=
+module α β
 
 instance discrete_field.to_vector_space {α : Type*} [discrete_field α] : vector_space α α :=
 { .. ring.to_module }

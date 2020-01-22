@@ -83,8 +83,6 @@ variables {I f}
 
 instance module         (α) {r : ring α}           [∀ i, add_comm_group $ f i]  [∀ i, module α $ f i]         : module α (Π i : I, f i)       := {..pi.semimodule I f α}
 
-instance vector_space   (α) {r : discrete_field α} [∀ i, add_comm_group $ f i]  [∀ i, vector_space α $ f i]   : vector_space α (Π i : I, f i) := {..pi.module α}
-
 instance left_cancel_semigroup [∀ i, left_cancel_semigroup $ f i] : left_cancel_semigroup (Π i : I, f i) :=
 by pi_instance
 
@@ -264,12 +262,12 @@ fst.is_group_hom fst.is_add_group_hom snd.is_group_hom snd.is_add_group_hom
 @[to_additive]
 lemma fst_prod [comm_monoid α] [comm_monoid β] {t : finset γ} {f : γ → α × β} :
   (t.prod f).1 = t.prod (λc, (f c).1) :=
-(finset.prod_hom prod.fst).symm
+(t.prod_hom prod.fst).symm
 
 @[to_additive]
 lemma snd_prod [comm_monoid α] [comm_monoid β] {t : finset γ} {f : γ → α × β} :
   (t.prod f).2 = t.prod (λc, (f c).2) :=
-(finset.prod_hom prod.snd).symm
+(t.prod_hom prod.snd).symm
 
 instance [semiring α] [semiring β] : semiring (α × β) :=
 { zero_mul := λ a, mk.inj_iff.mpr ⟨zero_mul _, zero_mul _⟩,
@@ -353,9 +351,6 @@ instance {r : semiring α} [add_comm_monoid β] [add_comm_monoid γ]
 
 instance {r : ring α} [add_comm_group β] [add_comm_group γ]
   [module α β] [module α γ] : module α (β × γ) := {}
-
-instance {r : discrete_field α} [add_comm_group β] [add_comm_group γ]
-  [vector_space α β] [vector_space α γ] : vector_space α (β × γ) := {}
 
 section substructures
 variables (s : set α) (t : set β)

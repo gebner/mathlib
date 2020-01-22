@@ -7,8 +7,7 @@ Type of bounded continuous functions taking values in a metric space, with
 the uniform distance.
  -/
 
-import analysis.normed_space.basic topology.metric_space.cau_seq_filter
-       topology.metric_space.lipschitz
+import analysis.normed_space.basic topology.metric_space.lipschitz
 
 noncomputable theory
 local attribute [instance] classical.decidable_inhabited classical.prop_decidable
@@ -63,8 +62,7 @@ bounded_range_iff.2 f.2.2
 /-- If a function is continuous on a compact space, it is automatically bounded,
 and therefore gives rise to an element of the type of bounded continuous functions -/
 def mk_of_compact [compact_space α] (f : α → β) (hf : continuous f) : α →ᵇ β :=
-⟨f, hf, bounded_range_iff.1 $ by rw ← image_univ; exact
-  bounded_of_compact (compact_image compact_univ hf)⟩
+⟨f, hf, bounded_range_iff.1 $ bounded_of_compact $ compact_range hf⟩
 
 /-- If a function is bounded on a discrete space, it is automatically continuous,
 and therefore gives rise to an element of the type of bounded continuous functions -/
@@ -255,7 +253,7 @@ begin
   /- For all x, the set hU x is an open set containing x on which the elements of A
   fluctuate by at most ε₂.
   We extract finitely many of these sets that cover the whole space, by compactness -/
-  rcases compact_elim_finite_subcover_image compact_univ
+  rcases compact_univ.elim_finite_subcover_image
     (λx _, (hU x).2.1) (λx hx, mem_bUnion (mem_univ _) (hU x).1)
     with ⟨tα, _, ⟨_⟩, htα⟩,
   /- tα : set α, htα : univ ⊆ ⋃x ∈ tα, U x -/
@@ -272,8 +270,7 @@ begin
   rintro ⟨f, hf⟩ ⟨g, hg⟩ f_eq_g,
   /- If two functions have the same approximation, then they are within distance ε -/
   refine lt_of_le_of_lt ((dist_le $ le_of_lt ε₁0).2 (λ x, _)) εε₁,
-  have : ∃x', x' ∈ tα ∧ x ∈ U x' := mem_bUnion_iff.1 (htα (mem_univ x)),
-  rcases this with ⟨x', x'tα, hx'⟩,
+  obtain ⟨x', x'tα, hx'⟩ : ∃x' ∈ tα, x ∈ U x' := mem_bUnion_iff.1 (htα (mem_univ x)),
   refine calc dist (f x) (g x)
       ≤ dist (f x) (f x') + dist (g x) (g x') + dist (f x') (g x') : dist_triangle4_right _ _ _ _
   ... ≤ ε₂ + ε₂ + ε₁/2 : le_of_lt (add_lt_add (add_lt_add _ _) _)
@@ -304,7 +301,7 @@ begin
   have M : lipschitz_with 1 coe := lipschitz_with.subtype_coe s,
   let F : (α →ᵇ s) → α →ᵇ β := comp coe M,
   refine compact_of_is_closed_subset
-    (compact_image (_ : compact (F ⁻¹' A)) (continuous_comp M)) closed (λ f hf, _),
+    ((_ : compact (F ⁻¹' A)).image (continuous_comp M)) closed (λ f hf, _),
   { haveI : compact_space s := compact_iff_compact_space.1 hs,
     refine arzela_ascoli₁ _ (continuous_iff_is_closed.1 (continuous_comp M) _ closed)
       (λ x ε ε0, bex.imp_right (λ U U_nhds hU y z hy hz f hf, _) (H x ε ε0)),

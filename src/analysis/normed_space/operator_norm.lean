@@ -68,7 +68,7 @@ begin
     have : (f : E → 𝕜) = (λx, 0), by { ext x, simpa using hf x },
     rw this,
     exact continuous_const },
-  { /- if f is not zero, we use an element x₀ ∉ ker f such taht ∥x₀∥ ≤ 2 ∥x₀ - y∥ for all y ∈ ker f,
+  { /- if f is not zero, we use an element x₀ ∉ ker f such that ∥x₀∥ ≤ 2 ∥x₀ - y∥ for all y ∈ ker f,
     given by Riesz's lemma, and prove that 2 ∥f x₀∥ / ∥x₀∥ gives a bound on the operator norm of f.
     For this, start from an arbitrary x and note that y = x₀ - (f x₀ / f x) x belongs to the kernel
     of f. Applying the above inequality to x₀ and y readily gives the conclusion. -/
@@ -158,16 +158,15 @@ section
 open asymptotics filter
 
 theorem is_O_id (l : filter E) : is_O f (λ x, x) l :=
-let ⟨M, hMp, hM⟩ := f.bound in
-⟨M, hMp, mem_sets_of_superset univ_mem_sets (λ x _, hM x)⟩
+let ⟨M, hMp, hM⟩ := f.bound in is_O_of_le' l hM
 
 theorem is_O_comp {E : Type*} (g : F →L[𝕜] G) (f : E → F) (l : filter E) :
   is_O (λ x', g (f x')) f l :=
-((g.is_O_id ⊤).comp _).mono (map_le_iff_le_comap.mp lattice.le_top)
+(g.is_O_id ⊤).comp_tendsto lattice.le_top
 
 theorem is_O_sub (f : E →L[𝕜] F) (l : filter E) (x : E) :
   is_O (λ x', f (x' - x)) (λ x', x' - x) l :=
-is_O_comp f _ l
+f.is_O_comp _ l
 
 end
 
@@ -386,8 +385,8 @@ have eq : _ := uniformly_extend_of_ind h_e h_dense f.uniform_continuous,
   smul := λk,
   begin
     refine is_closed_property h_dense (is_closed_eq _ _) _,
-    { exact cont.comp (continuous_smul continuous_const continuous_id)  },
-    { exact (continuous_smul continuous_const continuous_id).comp cont },
+    { exact cont.comp (continuous_const.smul continuous_id)  },
+    { exact (continuous_const.smul continuous_id).comp cont },
     { assume x, rw ← map_smul, simp only [eq], exact map_smul _ _ _  },
   end,
   cont := cont

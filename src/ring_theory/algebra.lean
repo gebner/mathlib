@@ -103,11 +103,6 @@ by rw [smul_def, smul_def, left_comm]
   (r • x) * y = r • (x * y) :=
 by rw [smul_def, smul_def, mul_assoc]
 
-@[priority 100] -- see Note [lower instance priority]
-instance {F : Type u} {K : Type v} [discrete_field F] [ring K] [algebra F K] :
-  vector_space F K :=
-@vector_space.mk F _ _ _ algebra.to_module
-
 /-- R[X] is the generator of the category R-Alg. -/
 instance polynomial (R : Type u) [comm_ring R] : algebra R (polynomial R) :=
 { to_fun := polynomial.C,
@@ -579,7 +574,9 @@ def alg_hom_int
 
 /-- CRing ⥤ ℤ-Alg -/
 instance algebra_int : algebra ℤ R :=
-algebra.of_ring_hom coe $ by constructor; intros; simp
+{ to_fun := coe,
+  commutes' := λ _ _, mul_comm _ _,
+  smul_def' := λ _ _, gsmul_eq_mul _ _ }
 
 variables {R}
 /-- CRing ⥤ ℤ-Alg -/

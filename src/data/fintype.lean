@@ -216,12 +216,10 @@ lemma finset.card_univ_diff [fintype α] [decidable_eq α] (s : finset α) :
 finset.card_sdiff (subset_univ s)
 
 instance (n : ℕ) : fintype (fin n) :=
-⟨⟨list.pmap fin.mk (list.range n) (λ a, list.mem_range.1),
-  list.nodup_pmap (λ a _ b _, congr_arg fin.val) (list.nodup_range _)⟩,
-λ ⟨m, h⟩, list.mem_pmap.2 ⟨m, list.mem_range.2 h, rfl⟩⟩
+⟨⟨list.fin_range n, list.nodup_fin_range n⟩, list.mem_fin_range⟩
 
 @[simp] theorem fintype.card_fin (n : ℕ) : fintype.card (fin n) = n :=
-by rw [fin.fintype]; simp [fintype.card, card, univ]
+list.length_fin_range n
 
 @[instance, priority 10] def unique.fintype {α : Type*} [unique α] : fintype α :=
 ⟨finset.singleton (default α), λ x, by rw [unique.eq_default x]; simp⟩
@@ -797,9 +795,20 @@ noncomputable def nat_embedding (α : Type*) [infinite α] : ℕ ↪ α :=
 
 end infinite
 
+lemma not_injective_infinite_fintype [infinite α] [fintype β] (f : α → β) :
+  ¬ injective f :=
+assume (hf : injective f),
+have H : fintype α := fintype.of_injective f hf,
+infinite.not_fintype H
+
+lemma not_surjective_fintype_infinite [fintype α] [infinite β] (f : α → β) :
+  ¬ surjective f :=
+assume (hf : surjective f),
+have H : infinite α := infinite.of_surjective f hf,
+@infinite.not_fintype _ H infer_instance
+
 instance nat.infinite : infinite ℕ :=
-⟨λ ⟨s, hs⟩, not_le_of_gt (nat.lt_succ_self (s.sum id)) $
-  @finset.single_le_sum _ _ _ id _ _ (λ _ _, nat.zero_le _) _ (hs _)⟩
+⟨λ ⟨s, hs⟩, finset.not_mem_range_self $ s.subset_range_sup_succ (hs _)⟩
 
 instance int.infinite : infinite ℤ :=
 infinite.of_injective int.of_nat (λ _ _, int.of_nat_inj)

@@ -43,8 +43,8 @@ open_locale classical
 
 -- To get a reasonable compile time for `continuous_equiv_fun_basis`, typeclass inference needs
 -- to be guided.
-local attribute [instance, priority 10000] pi.module normed_space.to_vector_space
-  vector_space.to_module submodule.add_comm_group submodule.module
+local attribute [instance, priority 10000] pi.module normed_space.to_module
+  submodule.add_comm_group submodule.module
   linear_map.finite_dimensional_range Pi.complete nondiscrete_normed_field.to_normed_field
 
 set_option class.instance_max_depth 100
@@ -60,7 +60,7 @@ begin
     by { ext x, exact f.pi_apply_eq_sum_univ x },
   rw this,
   refine continuous_finset_sum _ (λi hi, _),
-  exact continuous_smul (continuous_apply i) continuous_const
+  exact (continuous_apply i).smul continuous_const
 end
 
 section complete_field
@@ -175,6 +175,19 @@ begin
   simp only [linear_equiv.coe_apply, function.comp_app, coe_fn_coe_base, linear_map.comp_apply],
   rw linear_equiv.symm_apply_apply
 end
+
+/-- The continuous linear map induced by a linear map on a finite dimensional space -/
+def linear_map.to_continuous_linear_map [finite_dimensional 𝕜 E] (f : E →ₗ[𝕜] F) : E →L[𝕜] F :=
+{ cont := f.continuous_of_finite_dimensional, ..f }
+
+/-- The continuous linear equivalence induced by a linear equivalence on a finite dimensional space. -/
+def linear_equiv.to_continuous_linear_equiv [finite_dimensional 𝕜 E] (e : E ≃ₗ[𝕜] F) : E ≃L[𝕜] F :=
+{ continuous_to_fun := e.to_linear_map.continuous_of_finite_dimensional,
+  continuous_inv_fun := begin
+    haveI : finite_dimensional 𝕜 F := e.finite_dimensional,
+    exact e.symm.to_linear_map.continuous_of_finite_dimensional
+  end,
+  ..e }
 
 /-- Any finite-dimensional vector space over a complete field is complete.
 We do not register this as an instance to avoid an instance loop when trying to prove the
