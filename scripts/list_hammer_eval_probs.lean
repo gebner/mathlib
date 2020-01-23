@@ -1,4 +1,5 @@
-import all tactic.hammer.feature_search
+import tactic.hammer.feature_search
+import all
 
 attribute [inline] decidable.to_bool bool.decidable_eq
 
@@ -9,16 +10,15 @@ match decl.to_name with
 end
 
 meta def environment.list_theorems (env : environment) : list name := do
-decl ← env.get_trusted_decls,
-guard $ ¬ decl.is_axiom,
-guard $ ¬ decl.is_constant,
-guard $ decl.is_theorem,
-guard $ ¬ decl.is_auto_generated env,
-guard $ ¬ decl.is_equation_lemma,
-let n := decl.to_name,
-guard $ ¬ n.has_suffix "_sunfold",
-guard $ ¬ n.has_suffix "_main",
-pure decl.to_name
+let sunfold := "_sunfold" in let main := "_main" in
+list.map declaration.to_name $ env.get_trusted_decls.filter $ λ decl : declaration,
+decl.is_theorem ∧
+¬ decl.is_auto_generated env ∧
+¬ decl.is_equation_lemma ∧
+let n := decl.to_name in
+¬ n.has_suffix sunfold ∧
+¬ n.has_suffix main ∧
+¬ n.is_internal
 
 open tactic
 
