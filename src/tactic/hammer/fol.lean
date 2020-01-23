@@ -1,4 +1,4 @@
-import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates
+import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates tactic.derive_to_string
 
 meta def format.paren' (a : format) :=
 a.paren.group

@@ -444,11 +444,22 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
 | (expr.var i) _ _ := fail "of_expr_core (var _)"
 | e lctx lctx_lean := mk_const e
 
+-- TODO: ground metavariables
+meta def is_nonempty : expr → tactic bool
+| `(nonempty %%t) := is_nonempty t
+| t := trace t >> option.is_some <$> tactic.try_core (
+  (mk_instance t) <|>
+  (mk_app ``nonempty [t] >>= mk_instance) <|>
+  (mk_app ``has_zero [t] >>= mk_instance) <|>
+  (mk_app ``has_one [t] >>= mk_instance) <|>
+  failure
+)
+
 meta def of_lemma_core_top : expr → list hol_ty → list name → tactic hol_tm
 | (expr.pi n bi t e) lctx lctx_lean := do
   t' ← of_expr_core t lctx lctx_lean,
   ne' ← ensure_bool_core lctx t',
-  is_nonempty ← option.is_some <$> try_core ((mk_app ``nonempty [t] >>= mk_instance) <|> mk_instance t),
+  is_nonempty ← is_nonempty t,
   t_prop ← is_prop t,
   t_type ← is_type t,
   let e_has_var : bool := e.has_var,
@@ -513,8 +524,7 @@ meta def simplify_type : hol_ty → simpl hol_ty
 meta def replace_inst_by_true (e : hol_tm) (lctx : list hol_ty) : tactic hol_tm :=
 if e.has_var ∨ e.ty_core lctx ≠ hol_ty.tbool then pure e else do
 e' ← e.to_expr,
-has_inst ← option.is_some <$> (try_core $ mk_instance e' <|>
-  (do `(nonempty %%t) ← pure e', mk_instance t)),
+has_inst ← is_nonempty e',
 pure $ if has_inst then true else e
 
 meta def simplify : hol_tm → list hol_ty → simpl hol_tm
