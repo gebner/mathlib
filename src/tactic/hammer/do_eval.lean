@@ -1,4 +1,4 @@
-import tactic.hammer tactic.suggest tactic.finish
+import tactic.hammer tactic.suggest tactic.finish tactic.tidy
 
 namespace hammer
 open tactic
@@ -14,8 +14,15 @@ skip
 meta def eval_finish (for_env : environment) (_ : string) : tactic unit := do
 set_env_core $
   if for_env.contains ``tactic.interactive.finish then for_env else
-  for_env.import' (module_info.of_module_name `tactic.finish ""),
+  for_env.import' (module_info.of_module_name `tactic.finish),
 `[finish],
+done
+
+meta def eval_tidy (for_env : environment) (_ : string) : tactic unit := do
+-- set_env_core $
+--   if for_env.contains ``tactic.interactive.tidy then for_env else
+--   for_env.import' (module_info.of_module_name `tactic.tidy),
+`[tidy],
 done
 
 meta def eval_simp (for_env : environment) (_ : string) : tactic unit := do
@@ -149,6 +156,7 @@ trace cs,
 my_timetac (to_string n ++ " refl 0") eval_refl,
 my_timetac (to_string n ++ " library_search 0") (eval_library_search env),
 my_timetac (to_string n ++ " finish 0") (eval_finish env),
+my_timetac (to_string n ++ " tidy 0") (eval_tidy env),
 my_timetac (to_string n ++ " simp 0") (eval_simp env),
 my_timetac (to_string n ++ " super 10") (eval_super env 10),
 my_timetac (to_string n ++ " super oracle") (eval_super_oracle env cs),
