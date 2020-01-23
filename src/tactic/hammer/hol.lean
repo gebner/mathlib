@@ -447,7 +447,7 @@ meta def of_expr_core : expr → list hol_ty → list name → tactic hol_tm
 -- TODO: ground metavariables
 meta def is_nonempty : expr → tactic bool
 | `(nonempty %%t) := is_nonempty t
-| t := trace t >> option.is_some <$> tactic.try_core (
+| t := option.is_some <$> tactic.try_core (
   (mk_instance t) <|>
   (mk_app ``nonempty [t] >>= mk_instance) <|>
   (mk_app ``has_zero [t] >>= mk_instance) <|>
