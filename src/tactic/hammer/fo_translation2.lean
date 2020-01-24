@@ -200,7 +200,12 @@ match hd with
   | (sort _) := pure $ fo_term.const `_S
   | (elet pp_n t v b) := trans_term lctx (b.instantiate_var t)
   | (mvar n _ _) := pure $ fo_term.const n
-  | (macro _ es) := do
+  | (macro _ es) :=
+    match is_sorry hd with
+    | some t := do
+      t' ← trans_term lctx t,
+      pure $ fo_term.fn `_sorry [t']
+    | none := do
     e ← state_t.lift get_env,
     let hd := (_root_.try_for 100 (e.unfold_all_macros hd)).get_or_else hd,
     match hd with
@@ -213,6 +218,7 @@ match hd with
         trans_decl n f f_ty),
       trans_term lctx (f'.mk_app as.reverse)
     | _ := trans_term lctx hd
+    end
     end
   | (var _) := state_t.lift (fail "open term")
   | (lam _ _ _ _) := do
@@ -294,7 +300,7 @@ match t with
       trans_fml (x::lctx) `(@eq.{1} %%t' %%a' %%b'))
 | `(@eq %%t %%a %%b) := trans_fml lctx `(@heq.{1} %%t %%t %%a %%b)
 | `(@heq %%t %%t' %%a %%b) := do
-  t_is_prop ← is_effective_prop t,
+  t_is_prop ← state_t.lift $ is_prop t,
   if t_is_prop then
     trans_fml lctx `(%%a ↔ %%b)
   else
@@ -324,15 +330,16 @@ match t with
     pure (fo_fml.ex x' $ fo_fml.and a' b')
   else
     fo_fml.and <$> trans_fml lctx a <*> trans_fml lctx b
-| (pi pp_n bi a b) :=
-  if b.has_var_idx 0 then do
+| (pi pp_n bi a b) := do
+  a_prop ← is_effective_prop a,
+  if b.has_var_idx 0 ∧ ¬ a_prop then do
     x ← state_t.lift $ mk_local' pp_n bi a,
     x' ← get_var_name x,
     a' ← trans_type (x::lctx) x a,
     b' ← trans_fml (x::lctx) (b.instantiate_var x),
     pure (fo_fml.all x' $ fo_fml.imp a' b')
   else
-    fo_fml.imp <$> trans_fml lctx a <*> trans_fml lctx b
+    fo_fml.imp <$> trans_fml lctx a <*> trans_fml lctx (b.instantiate_var (mk_sorry a))
 | _ := do t' ← trans_term lctx t, pure (fo_fml.pred `_P [t'])
 end
 with trans_decl : name → expr → expr → trans unit | n e t := do
@@ -488,6 +495,7 @@ when (exitv ≠ 0) $ io.fail $ "process exited with status " ++ repr exitv,
 return buf.to_string
 
 meta def run_vampire (tptp : string) : tactic string :=
+timetac "vampire" $
 exec_cmd "vampire" ["-p", "tptp"] tptp
 
 meta def filter_lemmas (axs : list name) : tactic (list expr) := do
@@ -571,4 +579,4 @@ end interactive
 end tactic
 
 set_option profiler true
-example (x y : ℕ) : x ≤ max x (y.succ) := by hammer4
+example (x y : ℕ) : x ≤ max x (y) := by hammer4
