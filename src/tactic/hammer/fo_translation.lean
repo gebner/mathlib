@@ -1,6 +1,11 @@
 import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates
 tactic.hammer.fol super
 
+def list.zip_extend {α β} (a : α) : list α → list β → list (α × β)
+| (a::as) (b::bs) := (a,b) :: list.zip_extend as bs
+| [] (b::bs) := (a,b) :: list.zip_extend [] bs
+| _ [] := []
+
 namespace hammer
 
 open tactic expr native
@@ -205,6 +210,41 @@ meta def close_under_references_core : list name → rb_set name → tactic (rb_
 meta def close_under_references (ns : list name) : tactic (list name) :=
 rb_set.to_list <$> close_under_references_core ns mk_rb_set
 
+meta def mk_ignore_args_for_type : expr → list bool
+| (expr.pi _ binder_info.inst_implicit t e) := tt :: mk_ignore_args_for_type e
+| (expr.pi _ _ bi e) := ff :: mk_ignore_args_for_type e
+| _ := []
+
+meta def mk_ignore_args : tactic (rb_map name (list bool)) := do
+e ← get_env,
+pure $ rb_map.of_list $ e.get_trusted_decls.map $ λ d,
+  (d.to_name, mk_ignore_args_for_type d.type)
+
+meta def head_sym_of (e : expr) : name :=
+match e.get_app_fn with
+| expr.const n _ := n
+| _ := name.anonymous
+end
+
+meta def non_ignored_consts (il : rb_map name (list bool)) : expr → name_set → name_set
+| (expr.pi _ binder_info.inst_implicit t e) := non_ignored_consts e
+| (expr.lam _ binder_info.inst_implicit t e) := non_ignored_consts e
+| (expr.pi _ _ t e) := non_ignored_consts t ∘ non_ignored_consts e
+| (expr.lam _ _ t e) := non_ignored_consts t ∘ non_ignored_consts e
+| (expr.var _) := id
+| (expr.sort _) := id
+| (expr.mvar _ _ _) := id
+| (expr.local_const _ _ _ _) := id
+| (expr.macro _ es) := λ fv, es.foldl (λ fv e, non_ignored_consts e fv) fv
+| (expr.elet _ t v e) := non_ignored_consts t ∘ non_ignored_consts v ∘ non_ignored_consts e
+| (expr.const n _) := if is_ignored_const n then id else λ cs, cs.insert n
+| e@(expr.app _ _) := λ cs,
+let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
+let cs := non_ignored_consts fn cs in
+(((il.find hs).get_or_else []).zip_extend ff as).foldl
+  (λ cs ⟨i, a⟩, if i then cs else non_ignored_consts a cs)
+  cs
+
 meta def close_under_instances (ns : list name) : tactic (list name) := do
 let ns : rb_set name := rb_map.set_of_list ns,
 e ← get_env,
@@ -213,6 +253,10 @@ il ← mk_ignore_args,
 let ds := ds.filter (λ d, ∀ c ∈ (non_ignored_consts il d.type mk_name_set).to_list, ns.contains c),
 -- trace $ ds.map (λ d, d.to_name),
 pure $ rb_set.to_list $ ds.foldl (λ ns d, ns.insert d.to_name) ns
+
+meta def close_under_equations (ns : list name) : tactic (list name) :=
+(list.dup_by_native id ∘ (++ ns) ∘ list.join) <$>
+  ns.mmap (λ n, get_eqn_lemmas_for tt n <|> pure [])
 
 meta def trans_decl' (d : declaration) : trans unit := do
 t_is_prop ← state_t.lift $ tactic.is_prop d.type,
@@ -262,6 +306,7 @@ meta def do_trans (axs : list name) (goal : expr) : tactic (format × list (stri
 let axs := goal.constants.filter is_good_const ++ axs,
 axs ← state_t.lift $ close_under_references axs,
 axs ← state_t.lift $ close_under_instances axs,
+axs ← state_t.lift $ close_under_equations axs,
 axs ← state_t.lift $ close_under_references axs,
 state_t.lift $ trace $ (axs.map name.to_string).qsort (λ a b, a < b),
 axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),

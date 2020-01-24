@@ -444,6 +444,7 @@ meta def get_head_const : expr → expr
 meta def mk_monom_file (axs : list name) : tactic (format × list (string × expr × expr)) := do
 goal ← retrieve (revert_all >> target),
 let axs := goal.constants.filter is_good_const ++ axs,
+axs ← close_under_equations axs,
 axs ← close_under_references axs,
 repeat (intro1 >> skip),
 (do tgt ← target, when (tgt ≠ `(false)) $

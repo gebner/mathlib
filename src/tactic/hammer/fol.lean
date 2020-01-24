@@ -12,6 +12,32 @@ end
 
 namespace hammer
 
+@[derive decidable_eq, derive has_to_string, derive has_repr]
+def lbool := option bool
+
+namespace lbool
+
+@[pattern] def ff : lbool := some ff
+@[pattern] def tt : lbool := some tt
+@[pattern] def undef : lbool := none
+
+def not (a : lbool) : lbool :=
+bnot <$> a
+
+def and (a b : lbool) : lbool :=
+band <$> a <*> b
+
+def or (a b : lbool) : lbool :=
+bor <$> a <*> b
+
+def imp (a b : lbool) : lbool :=
+a.not.or b
+
+def iff (a b : lbool) : lbool :=
+(λ a b : bool, (a ↔ b : bool)) <$> a <*> b
+
+end lbool
+
 open tactic expr native
 
 inductive fo_term
@@ -78,6 +104,22 @@ meta instance : has_to_tactic_format fo_fml := ⟨pure ∘ fo_fml.to_fmt⟩
 meta instance : has_to_format fo_fml := ⟨fo_fml.to_fmt⟩
 meta instance : has_to_string fo_fml := ⟨to_string ∘ to_fmt⟩
 meta instance : has_repr fo_fml := ⟨to_string ∘ to_fmt⟩
+
+def approx : fo_fml → lbool
+| false := lbool.ff
+| true := lbool.tt
+| (eq a b) := lbool.undef
+| (pred _ _) := lbool.undef
+| (neg a) := a.approx.not
+| (imp a b) := a.approx.imp b.approx
+| (or a b) := a.approx.or b.approx
+| (and a b) := a.approx.and b.approx
+| (ex x a) := a.approx
+| (all x a) := a.approx
+| (iff a b) := a.approx.iff b.approx
+
+def is_trivially_true (a : fo_fml) : bool :=
+a.approx = lbool.tt
 
 end fo_fml
 
