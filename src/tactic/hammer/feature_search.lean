@@ -62,4 +62,4 @@ end tactic
 
 set_option profiler true
 
-example : ∀ x y : nat, x + y = y + x := by feature_search 100; sorry
+-- example : ∀ x y : nat, x + y = y + x := by feature_search 100; sorry

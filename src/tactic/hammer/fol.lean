@@ -1,5 +1,8 @@
 import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates tactic.derive_to_string
 
+attribute [inline] char.of_nat char.decidable_le char.decidable_eq
+  decidable_of_decidable_of_iff
+
 meta def format.paren' (a : format) :=
 a.paren.group
 
@@ -13,28 +16,29 @@ end
 namespace hammer
 
 @[derive decidable_eq, derive has_to_string, derive has_repr]
-def lbool := option bool
+inductive lbool | tt | ff | undef
 
 namespace lbool
 
-@[pattern] def ff : lbool := some ff
-@[pattern] def tt : lbool := some tt
-@[pattern] def undef : lbool := none
+def not : lbool → lbool
+| tt := ff
+| ff := tt
+| undef := undef
 
-def not (a : lbool) : lbool :=
-bnot <$> a
-
-def and (a b : lbool) : lbool :=
-band <$> a <*> b
+def and : lbool → lbool → lbool
+| tt tt := tt
+| ff  _ := ff
+| _  ff := ff
+| _  _  := undef
 
 def or (a b : lbool) : lbool :=
-bor <$> a <*> b
+(a.not.and b.not).not
 
 def imp (a b : lbool) : lbool :=
 a.not.or b
 
 def iff (a b : lbool) : lbool :=
-(λ a b : bool, (a ↔ b : bool)) <$> a <*> b
+(a.imp b).and (b.imp a)
 
 end lbool
 
@@ -121,6 +125,62 @@ def approx : fo_fml → lbool
 def is_trivially_true (a : fo_fml) : bool :=
 a.approx = lbool.tt
 
+def simp : fo_fml → fo_fml
+| false := false
+| true := true
+| (neg a) :=
+  match a.simp with
+  | true := false
+  | false := true
+  | a := neg a
+  end
+| (and a b) :=
+  match a.simp, b.simp with
+  | false, _ := false
+  | _, false := false
+  | true, b := b
+  | a, true := a
+  | a, b := a.and b
+  end
+| (or a b) :=
+  match a.simp, b.simp with
+  | true, _ := true
+  | _, true := true
+  | false, b := b
+  | a, false := a
+  | a, b := a.or b
+  end
+| (imp a b) :=
+  match a.simp, b.simp with
+  | false, _ := true
+  | _, true := true
+  | true, b := b
+  | a, false := a.neg
+  | a, b := a.imp b
+  end
+| (iff a b) :=
+  match a.simp, b.simp with
+  | true, b := b
+  | a, true := a
+  | false, b := b.neg
+  | a, false := a.neg
+  | a, b := a.iff b
+  end
+| (all x a) :=
+  match a.simp with
+  | true := true
+  | false := false
+  | a := all x a
+  end
+| (ex x a) :=
+  match a.simp with
+  | true := true
+  | false := false
+  | a := ex x a
+  end
+| f@(pred _ _) := f
+| f@(eq _ _) := f
+
 end fo_fml
 
 def term_prf := fo_term.const ``true.intro
@@ -130,6 +190,7 @@ if ('A' ≤ c ∧ c ≤ 'Z') ∨ ('a' ≤ c ∧ c ≤ 'z') ∨ ('0' ≤ c ∧ c 
 match c with
 | 'α' := ['_', 'g', 'a']
 | 'β' := ['_', 'g', 'b']
+| 'ι' := ['_', 'g', 'i']
 | '₁' := ['_', 'l', '1']
 | '₂' := ['_', 'l', '2']
 | '_' := ['_', '_']

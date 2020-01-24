@@ -62,6 +62,7 @@ meta structure trans_state :=
 (fresh_idx : ℕ := 0)
 (modes : name_map (list arg_mode) := mk_name_map)
 (var_names : name_map name := mk_name_map)
+(abbrs : rb_map expr expr := mk_rb_map)
 (out : list trans_out := [])
 
 @[reducible]
@@ -109,6 +110,17 @@ match n with
   pure n
 end
 
+meta def abbr (e : expr) (n : name) : trans (expr × bool) := do
+e' ← (λ s : trans_state, s.abbrs.find e) <$> state_t.get,
+match e' with
+| some e' := pure (e', ff)
+| none := do
+  t ← state_t.lift $ infer_type e,
+  e' ← state_t.lift $ mk_local_def n t,
+  state_t.modify $ λ s, { abbrs := s.abbrs.insert e e', ..s },
+  pure (e', tt)
+end
+
 meta def apply_modes {α} : list arg_mode → list α → list α × list α
 | [] as := ([], as)
 | (arg_mode.dropped::ms) (a::as) := apply_modes ms as
@@ -125,6 +137,28 @@ meta def fo_app (a b : fo_term) := fo_term.fn `_A [a, b]
 meta def is_effective_prop (e : expr) : trans bool :=
 state_t.lift $ bor <$> is_prop e <*> is_coherent_tc e
 
+meta def eta_expand : expr → ℕ → tactic expr
+| e 0 := pure e
+| e (n+1) := do
+  t ← infer_type e >>= whnf,
+  match t with
+  | (pi bn bi dom cod) := do
+    l ← mk_local' bn bi dom,
+    mk_lambda l <$> eta_expand (e l) n
+  | _ := do t ← pp t, fail $ to_fmt "cannot eta-expand " ++ t
+  end
+
+meta def extract_from_lctx : list expr → expr → expr × list expr
+| [] e := (e, [])
+| (x::lctx) e :=
+  let e := e.abstract_local x.local_uniq_name in
+  if e.has_var then
+    let (e, lctx) := extract_from_lctx lctx $
+      lam x.local_pp_name x.local_binding_info x.local_type e in
+    (e, x::lctx)
+  else
+    extract_from_lctx lctx e
+
 meta mutual def trans_term, trans_type, trans_fml, trans_decl
 with trans_term : list expr → expr → trans fo_term | lctx t := do
 t ← state_t.lift $ zeta t,
@@ -135,24 +169,29 @@ if is_proof then pure term_prf else do
 let hd := t.get_app_fn,
 let as := t.get_app_args,
 match hd with
+| `(auto_param %%hd _) := trans_term lctx (hd.mk_app as)
 | (const n _) := do
   ms ← get_arg_modes_for_head hd,
-  -- TODO: eta-expand
-  let (ps, as) := apply_modes ms as,
-  ps ← ps.mmap (trans_term lctx),
-  as ← as.mmap (trans_term lctx),
-  pure $ list.foldl fo_app (fo_term.fn n ps) as
+  if ms.length > as.length then -- eta-expand
+    state_t.lift (eta_expand t (ms.length - as.length)) >>= trans_term lctx
+  else do
+    let (ps, as) := apply_modes ms as,
+    ps ← ps.mmap (trans_term lctx),
+    as ← as.mmap (trans_term lctx),
+    pure $ list.foldl fo_app (fo_term.fn n ps) as
 | (local_const _ pretty bi ty) := do
   vn ← get_var_name hd,
   if hd ∈ lctx then do
     list.foldl fo_app (fo_term.var vn) <$> as.mmap (trans_term lctx)
   else do
     ms ← get_arg_modes_for_head hd,
-    -- TODO: eta-expand
-    let (ps, as) := apply_modes ms as,
-    ps ← ps.mmap (trans_term lctx),
-    as ← as.mmap (trans_term lctx),
-    pure $ list.foldl fo_app (fo_term.fn vn ps) as
+    if ms.length > as.length then -- eta-expand
+      state_t.lift (eta_expand t (ms.length - as.length)) >>= trans_term lctx
+    else do
+      let (ps, as) := apply_modes ms as,
+      ps ← ps.mmap (trans_term lctx),
+      as ← as.mmap (trans_term lctx),
+      pure $ list.foldl fo_app (fo_term.fn vn ps) as
 | _ := do
   hd' ← match hd with
   | (app _ _) := state_t.lift $ fail "trans_term head is app"
@@ -161,33 +200,45 @@ match hd with
   | (sort _) := pure $ fo_term.const `_S
   | (elet pp_n t v b) := trans_term lctx (b.instantiate_var t)
   | (mvar n _ _) := pure $ fo_term.const n
-  | (macro _ es) :=
-    -- TODO
-    fo_term.fn `UNSUPPORTED_MACRO <$> es.mmap (trans_term lctx)
+  | (macro _ es) := do
+    e ← state_t.lift get_env,
+    let hd := (_root_.try_for 100 (e.unfold_all_macros hd)).get_or_else hd,
+    match hd with
+    | (macro _ _) := do
+      let (f, as) := extract_from_lctx lctx hd,
+      (f', is_new) ← abbr f `_macro,
+      when is_new (do
+        f_ty ← state_t.lift $ infer_type f,
+        n ← get_var_name f',
+        trans_decl n f f_ty),
+      trans_term lctx (f'.mk_app as.reverse)
+    | _ := trans_term lctx hd
+    end
   | (var _) := state_t.lift (fail "open term")
   | (lam _ _ _ _) := do
-    -- TODO
-    pure $ fo_term.const `UNSUPPORTED_LAMBDA
-    -- n ← fresh_name `_lambda,
-    -- ty ← state_t.lift $ infer_type t,
-    -- let lcs := sort_lconsts (contained_lconsts t),
-    -- let n_ty := mk_pis lcs ty,
-    -- let t' := expr.app_of_list (mk_to_const n n_ty) lcs,
-    -- trans_decl n n_ty,
-    -- trans_decl (n.mk_string "eqn") $ mk_pis lcs `(@eq.{1} %%ty %%t %%t'),
-    -- trans_term t'
+    let (f, as) := extract_from_lctx lctx hd,
+    (f', is_new) ← abbr f `_lambda,
+    when is_new (do
+      f_ty ← state_t.lift $ infer_type f,
+      n ← get_var_name f',
+      trans_decl n f f_ty,
+      trans_decl (n.mk_string "eqn") f $ `(@eq.{1} %%f_ty %%f' %%f)),
+    trans_term lctx (f'.mk_app as.reverse)
   | (pi _ _ _ _) := do
-    -- TODO
-    pure $ fo_term.const `UNSUPPORTED_PI
-    -- n ← fresh_name `_pi,
-    -- ty ← state_t.lift $ infer_type t,
-    -- let lcs := sort_lconsts (contained_lconsts t),
-    -- let n_ty := mk_pis lcs ty,
-    -- let t' := expr.app_of_list (mk_to_const n n_ty) lcs,
-    -- trans_decl n n_ty,
-    -- -- TODO
-    -- -- trans_decl (n.mk_string "eqn") $ mk_pis lcs `(@eq.{1} %%ty %%t %%t'),
-    -- trans_term t'
+    let (f, as) := extract_from_lctx lctx hd,
+    (f', is_new) ← abbr f `_pi,
+    when is_new (do
+      f_ty ← state_t.lift $ infer_type f,
+      n ← get_var_name f',
+      trans_decl n f f_ty,
+      x ← state_t.lift $ mk_local_def `x hd,
+      eqn ← fo_fml.iff
+        <$> trans_type (x::as) x (f'.mk_app as.reverse)
+        <*> trans_type (x::as) x hd,
+      eqn ← as.mfoldl (λ eqn a, do a' ← get_var_name a, pure $ fo_fml.all a' eqn) eqn,
+      x' ← get_var_name x,
+      trans.decl_out (n.mk_string "eqn") f (fo_fml.all x' eqn)),
+    trans_term lctx (f'.mk_app as)
   end,
   list.foldl fo_app hd' <$> as.mmap (trans_term lctx)
 end
@@ -202,6 +253,7 @@ else if t_is_prop then do
 else match t with
 -- | (sort level.zero) :=
 --   pure $ fo_fml.or (fo_fml.eq _ _) (fo_fml.eq _ _)
+| `(auto_param %%t _) := trans_type lctx e t
 | (sort l) := pure fo_fml.true
 | (pi pp_n bi a b) := do
   a_is_prop ← is_effective_prop a,
@@ -221,6 +273,7 @@ else match t with
 end
 with trans_fml : list expr → expr → trans fo_fml | lctx t :=
 match t with
+| `(auto_param %%t _) := trans_fml lctx t
 | `(@eq %%t %%(a@(expr.lam pp_n bi c _)) %%b) := do
   x ← state_t.lift $ mk_local' pp_n bi c,
   x' ← get_var_name x,
@@ -249,6 +302,19 @@ match t with
 | `(%%a ∧ %%b) := fo_fml.and <$> trans_fml lctx a <*> trans_fml lctx b
 | `(%%a ∨ %%b) := fo_fml.or <$> trans_fml lctx a <*> trans_fml lctx b
 | `(%%a ↔ %%b) := fo_fml.iff <$> trans_fml lctx a <*> trans_fml lctx b
+| `(decidable_pred _) := pure fo_fml.true
+| `(decidable_rel _) := pure fo_fml.true
+| `(decidable_eq _) := pure fo_fml.true
+| `(decidable _) := pure fo_fml.true
+| `(nonempty %%t) := do
+  t_is_prop ← is_effective_prop t,
+  if t_is_prop then
+    trans_fml lctx t
+  else do
+    x ← state_t.lift $ mk_local_def `x t,
+    x' ← get_var_name x,
+    fo_fml.ex x' <$> trans_type (x::lctx) x t
+| `(inhabited %%t) := trans_fml lctx `(nonempty.{1} %%t)
 | `(Exists %%(expr.lam pp_n bi a b)) :=
   if b.has_var_idx 0 then do
     x ← state_t.lift $ mk_local' pp_n bi a,
@@ -284,8 +350,7 @@ meta def trans_decl' (d : declaration) : trans unit :=
 trans_decl d.to_name (const d.to_name (d.univ_params.map level.param)) d.type
 
 #eval do
--- d ← get_decl `list.dvd_sum,
-d ← get_decl `name.mk_string,
+d ← get_decl `list.ilast,
 ((), out) ← (trans_decl' d).run {},
 out.out.mmap $ λ out,
 trace $ tptpify_ann "axiom" out.n out.fml
@@ -312,49 +377,62 @@ meta def close_under_references_core : list name → rb_set name → tactic (rb_
 meta def close_under_references (ns : list name) : tactic (list name) :=
 rb_set.to_list <$> close_under_references_core ns mk_rb_set
 
-meta def mk_ignore_args_for_type : expr → list bool
-| (expr.pi _ binder_info.inst_implicit t e) := tt :: mk_ignore_args_for_type e
-| (expr.pi _ _ bi e) := ff :: mk_ignore_args_for_type e
-| _ := []
+meta def explicit_arg_heads_core : list expr → expr → list name
+| (a::as) (pi _ bi _ t) :=
+  let rest := explicit_arg_heads_core as t in
+  if bi ≠ binder_info.default then rest else
+  match a.get_app_fn with
+  | (const n _) := n :: rest
+  | _ := rest
+  end
+| _ _ := []
 
-meta def mk_ignore_args : tactic (rb_map name (list bool)) := do
-e ← get_env,
-pure $ rb_map.of_list $ e.get_trusted_decls.map $ λ d,
-  (d.to_name, mk_ignore_args_for_type d.type)
-
-meta def head_sym_of (e : expr) : name :=
+meta def get_explicit_arg_heads (e : expr) : tactic (list name) :=
 match e.get_app_fn with
-| expr.const n _ := n
-| _ := name.anonymous
+| (const n _) := do
+  t ← declaration.type <$> get_decl n,
+  pure $ n :: explicit_arg_heads_core e.get_app_args t
+| _ := pure []
 end
 
-meta def non_ignored_consts (il : rb_map name (list bool)) : expr → name_set → name_set
-| (expr.pi _ binder_info.inst_implicit t e) := non_ignored_consts e
-| (expr.lam _ binder_info.inst_implicit t e) := non_ignored_consts e
-| (expr.pi _ _ t e) := non_ignored_consts t ∘ non_ignored_consts e
-| (expr.lam _ _ t e) := non_ignored_consts t ∘ non_ignored_consts e
-| (expr.var _) := id
-| (expr.sort _) := id
-| (expr.mvar _ _ _) := id
-| (expr.local_const _ _ _ _) := id
-| (expr.macro _ es) := λ fv, es.foldl (λ fv e, non_ignored_consts e fv) fv
-| (expr.elet _ t v e) := non_ignored_consts t ∘ non_ignored_consts v ∘ non_ignored_consts e
-| (expr.const n _) := if is_ignored_const n then id else λ cs, cs.insert n
-| e@(expr.app _ _) := λ cs,
-let fn := e.get_app_fn, as := e.get_app_args, hs := head_sym_of fn in
-let cs := non_ignored_consts fn cs in
-(((il.find hs).get_or_else []).zip_extend ff as).foldl
-  (λ cs ⟨i, a⟩, if i then cs else non_ignored_consts a cs)
-  cs
+meta def inst_implicit_dom_heads : expr → list name
+| (pi _ binder_info.inst_implicit d c) :=
+  match d.get_app_fn with
+  | const n _ := n :: inst_implicit_dom_heads c
+  | _ := inst_implicit_dom_heads c
+  end
+| (pi _ _ _ c) := inst_implicit_dom_heads c
+| _ := []
+
+meta def close_under_instances_core (all_cs : name_map (list name)) :
+  list name → name_set → name_set → tactic name_set
+| [] done cnsts := pure cnsts
+| (c::cs) done cnsts :=
+  if done.contains c then
+    close_under_instances_core cs done cnsts
+  else do
+    let done := done.insert c,
+    ct ← declaration.type <$> get_decl c,
+    new_is ← list.join <$> ((all_cs.find c).get_or_else []).mmap (λ i, do
+      v ← declaration.type <$> get_decl i,
+      let cod_hs := explicit_arg_heads_core v.pi_codomain.get_app_args ct,
+      pure $ if ¬ ∀ n ∈ cod_hs, cnsts.contains n then
+        []
+      else
+        [i]),
+    new_cs ← list.join <$> new_is.mmap (λ i,
+      (inst_implicit_dom_heads ∘ declaration.type) <$> get_decl i),
+    let cs := new_cs.filter (λ c, ¬ done.contains c) ++ cs,
+    let cnsts := new_is.foldl name_set.insert cnsts,
+    close_under_instances_core cs done cnsts
 
 meta def close_under_instances (ns : list name) : tactic (list name) := do
-let ns : rb_set name := rb_map.set_of_list ns,
-e ← get_env,
-ds ← e.get_trusted_decls.mfilter (λ d, is_instance d.to_name),
-il ← mk_ignore_args,
-let ds := ds.filter (λ d, ∀ c ∈ (non_ignored_consts il d.type mk_name_set).to_list, ns.contains c),
--- trace $ ds.map (λ d, d.to_name),
-pure $ rb_set.to_list $ ds.foldl (λ ns d, ns.insert d.to_name) ns
+is ← attribute.get_instances `instance,
+cs ← rb_lmap.of_list <$> is.mmap (λ i : name, do
+  t ← declaration.type <$> get_decl i,
+  pure (t.pi_codomain.get_app_fn.const_name, i)),
+name_set.to_list <$>
+  close_under_instances_core cs (ns.filter (λ n, cs.contains n)) mk_name_set (name_set.of_list ns)
 
 meta def close_under_equations (ns : list name) : tactic (list name) :=
 (list.dup_by_native id ∘ (++ ns) ∘ list.join) <$>
@@ -363,41 +441,36 @@ meta def close_under_equations (ns : list name) : tactic (list name) :=
     if is_tc then pure [] else
       get_eqn_lemmas_for tt n <|> pure [])
 
-meta def do_trans (axs : list name) (goal : expr) : tactic (format × list (string × expr × name)) :=
+meta def do_trans (axs : list name) : tactic (format × list (string × expr × name)) :=
 (λ t : trans _, prod.fst <$> t.run {}) $ do
-let axs := goal.constants.filter is_good_const ++ axs,
+rgoal ← state_t.lift reverted_target,
+let axs := rgoal.constants.filter is_good_const ++ axs,
 axs ← state_t.lift $ close_under_references axs,
-axs ← state_t.lift $ close_under_instances axs,
 axs ← state_t.lift $ close_under_equations axs,
+axs ← state_t.lift $ close_under_instances axs,
 axs ← state_t.lift $ close_under_references axs,
 let axs := axs.qsort (λ a b : name, a.to_string < b.to_string),
-state_t.lift $ trace axs,
-axs.mmap' (λ n, do d ← state_t.lift $ trace n >> get_decl n, trans_decl' d),
+axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),
+lctx ← state_t.lift tactic.local_context,
+lctx.mmap' (λ l, do
+  n ← get_var_name l,
+  t ← state_t.lift $ infer_type l,
+  trans_decl n l t),
+out ← trans_state.out <$> state_t.get,
+let anns := (do
+  o ← out,
+  guard (¬ o.fml.is_trivially_true),
+  [tptpify_ann "axiom" o.n o.fml.simp]),
+goal ← state_t.lift target,
 goal_is_prop ← state_t.lift $ tactic.is_prop goal,
 goal' ← if goal_is_prop then trans_fml [] goal
   else (do
     x ← state_t.lift $ mk_local_def `goal goal,
     x' ← get_var_name x,
     fo_fml.ex x' <$> trans_type [x] x goal),
-out ← trans_state.out <$> state_t.get,
-let anns := (do
-  o ← out,
-  guard (¬ o.fml.is_trivially_true),
-  [tptpify_ann "axiom" o.n o.fml]),
-let anns := (tptpify_ann "conjecture" `_goal goal') :: anns,
+let anns := (tptpify_ann "conjecture" `_goal goal'.simp) :: anns,
 let tptp := format.join $ list.intersperse (format.line ++ format.line) anns.reverse,
 pure (tptp, out.map (λ o, (ax_tptpify_name o.n, o.prf, o.n)))
-
--- #eval do_trans [
---   ``nat.prod_dvd_and_dvd_of_dvd_prod,
--- --  ``heq.drec_on,
---  ``nat.exists_coprime
--- ] `(
---   ∀ {m n : ℕ} (H : 0 < nat.gcd m n),
---   ∃ g m' n', 0 < g ∧ nat.coprime m' n' ∧ m = m' * g ∧ n = n' * g
--- ) >>= tactic.trace
-
-section
 
 meta def exec_cmd (cmd : string) (args : list string) (stdin : string) : tactic string :=
 tactic.unsafe_run_io $ do
@@ -417,10 +490,8 @@ return buf.to_string
 meta def run_vampire (tptp : string) : tactic string :=
 exec_cmd "vampire" ["-p", "tptp"] tptp
 
-end
-
-meta def filter_lemmas1 (axs : list name) (goal : expr) : tactic (list expr) := do
-(tptp, ax_names) ← do_trans axs goal,
+meta def filter_lemmas (axs : list name) : tactic (list expr) := do
+(tptp, ax_names) ← do_trans axs,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 tptp_out ← exec_cmd "bash" ["-c",
@@ -430,28 +501,74 @@ tptp_out ← exec_cmd "bash" ["-c",
 let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, ((ax_names.find n).to_list).map prod.fst
 
-meta def find_lemmas1 (goal : expr) (max := 10) : tactic (list expr) := do
-axs ← timetac "Premise selection took" $ select_for_goal goal,
+meta def find_lemmas (max := 10) : tactic (list expr) := do
+rgoal ← reverted_target,
+axs ← timetac "Premise selection took" $ select_for_goal rgoal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-timetac "Vampire took" $ filter_lemmas1 axs goal
+timetac "Vampire took" $ filter_lemmas axs
 
-meta def reconstruct1 (axs : list name) : tactic unit :=
+meta def reconstruct (axs : list expr) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
 axs ← list.join <$> (axs.mmap $ λ ax,
-  pure <$> (mk_const ax >>= super.clause.of_proof) <|> pure []),
+  pure <$>
+      ((do const ax _ ← pure ax, mk_const ax >>= super.clause.of_proof)
+      <|> (do local_const _ _ _ _ ← pure ax, super.clause.of_proof ax))
+    <|> pure []),
 axs ← (++ axs) <$> (tactic.local_context >>= list.mmap super.clause.of_proof),
 super.solve_with_goal {} axs
 
+-- set_option profiler true
 #eval do
 let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
-let goal : expr := `(∀ x : nat, x ≤ x),
+let goal : expr := `(∀ x : nat, x + 0 ≤ x),
 -- axs ← select_for_goal goal,
-let axs := [(``nat.le_succ, ()), (``le_refl, ())],
-(tptp, _) ← do_trans ((axs.take 20).map prod.fst) goal,
+let axs := [(``nat.le_succ, ()), (``le_refl, ()), (``add_zero, ())],
+tactic.assert `h goal,
+tactic.intros,
+(tptp, _) ← do_trans ((axs.take 20).map prod.fst),
 trace tptp
 
 end fotr2
 
 end hammer
+
+namespace tactic
+
+namespace interactive
+
+open interactive interactive.types lean.parser hammer.fotr2
+
+meta def find_lemmas4 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+lems ←
+  match axs with
+  | none := hammer.fotr2.find_lemmas max_lemmas
+  | some axs := do
+    axs.mmap' (λ ax, get_decl ax),
+    timetac "Vampire took" $
+      hammer.fotr2.filter_lemmas axs
+  end,
+trace "Vampire proof uses the following lemmas:",
+lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+admit
+
+meta def hammer4 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
+lems ←
+  match axs with
+  | none := hammer.fotr2.find_lemmas max_lemmas
+  | some axs := do
+    axs.mmap' (λ ax, get_decl ax),
+    timetac "Vampire took" $
+      hammer.fotr2.filter_lemmas axs
+  end,
+trace "Vampire proof uses the following lemmas:",
+lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+tactic.intros,
+hammer.fotr2.reconstruct lems
+
+end interactive
+end tactic
+
+set_option profiler true
+example (x y : ℕ) : x ≤ max x (y.succ) := by hammer4
