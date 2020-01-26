@@ -207,7 +207,7 @@ match hd with
       pure $ fo_term.fn `_sorry [t']
     | none := do
     e ← state_t.lift get_env,
-    let hd := (_root_.try_for 100 (e.unfold_all_macros hd)).get_or_else hd,
+    let hd := (_root_.try_for 1000 (e.unfold_all_macros hd)).get_or_else hd,
     match hd with
     | (macro _ _) := do
       let (f, as) := extract_from_lctx lctx hd,
@@ -300,11 +300,13 @@ match t with
       trans_fml (x::lctx) `(@eq.{1} %%t' %%a' %%b'))
 | `(@eq %%t %%a %%b) := trans_fml lctx `(@heq.{1} %%t %%t %%a %%b)
 | `(@heq %%t %%t' %%a %%b) := do
-  t_is_prop ← state_t.lift $ is_prop t,
-  if t_is_prop then
+  a_is_prop ← state_t.lift $ is_prop a,
+  if a_is_prop then
     trans_fml lctx `(%%a ↔ %%b)
   else
     fo_fml.eq <$> trans_term lctx a <*> trans_term lctx b
+| `(¬ %%a) := fo_fml.neg <$> trans_fml lctx a
+| `(@ne %%t %%a %%b) := trans_fml lctx `(¬ (@eq.{1} %%t %%a %%b))
 | `(%%a ∧ %%b) := fo_fml.and <$> trans_fml lctx a <*> trans_fml lctx b
 | `(%%a ∨ %%b) := fo_fml.or <$> trans_fml lctx a <*> trans_fml lctx b
 | `(%%a ↔ %%b) := fo_fml.iff <$> trans_fml lctx a <*> trans_fml lctx b
@@ -343,6 +345,9 @@ match t with
 | _ := do t' ← trans_term lctx t, pure (fo_fml.pred `_P [t'])
 end
 with trans_decl : name → expr → expr → trans unit | n e t := do
+env ← state_t.lift get_env,
+let e := (_root_.try_for 1000 (env.unfold_all_macros e)).get_or_else e,
+let t := (_root_.try_for 1000 (env.unfold_all_macros t)).get_or_else t,
 t_is_prop ← is_effective_prop t,
 t' ←
   if t_is_prop then
@@ -456,6 +461,9 @@ axs ← state_t.lift $ close_under_references axs,
 axs ← state_t.lift $ close_under_equations axs,
 axs ← state_t.lift $ close_under_instances axs,
 axs ← state_t.lift $ close_under_references axs,
+env ← state_t.lift get_env,
+cs ← state_t.lift $ name_set.of_list <$> attribute.get_instances `class,
+let axs := axs.filter (λ ax, ¬ (env.is_constructor ax ∧ cs.contains ax.get_prefix)),
 let axs := axs.qsort (λ a b : name, a.to_string < b.to_string),
 axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),
 lctx ← state_t.lift tactic.local_context,
@@ -502,7 +510,7 @@ meta def filter_lemmas (axs : list name) : tactic (list expr) := do
 (tptp, ax_names) ← do_trans axs,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
-tptp_out ← exec_cmd "bash" ["-c",
+tptp_out ← timetac "vampire" $ exec_cmd "bash" ["-c",
   "vampire -p tptp -t 30s --output_axiom_names on | " ++
     "grep -oP '(?<=file\\(unknown,).*?(?=\\))'"]
   tptp.to_string,

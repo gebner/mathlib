@@ -1,1 +1,1 @@
-import tactic.hammer.monomorphization2
+import tactic.hammer.monomorphization2 tactic.hammer.fo_translation2
