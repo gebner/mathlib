@@ -31,25 +31,38 @@ meta def occurs_in_non_dropped : expr → list arg_mode → bool
 meta def is_coherent_tc : expr → tactic bool :=
 is_class
 
-meta def compute_arg_modes : expr → tactic (list arg_mode)
+meta structure compute_arg_modes_cfg :=
+(drop_inst_args := tt)
+(drop_dep_args := tt)
+(param_all_args := ff)
+(param_all_cls_args := tt)
+
+meta def compute_arg_modes_core (cfg : compute_arg_modes_cfg) : expr → tactic (list arg_mode)
 | (expr.pi bn bi ty body) := do
   l ← mk_local' bn bi ty,
-  modes ← compute_arg_modes (body.instantiate_var l),
+  modes ← compute_arg_modes_core (body.instantiate_var l),
   irrelevant ← succeeds (mk_mapp ``subsingleton [ty] >>= mk_instance),
   is_tc ← is_coherent_tc ty,
-  if irrelevant ∨ is_tc then
+  if irrelevant ∨ (cfg.drop_inst_args ∧ is_tc) then
     pure $ arg_mode.dropped :: modes
-  else if occurs_in_non_dropped body modes then
+  else if cfg.drop_dep_args ∧ occurs_in_non_dropped body modes then
     pure $ arg_mode.dropped :: modes
   else if occurs_in_dropped body modes then
     pure $ arg_mode.param :: modes
-  -- else if true then pure $ arg_mode.param :: modes
+  else if cfg.param_all_args then
+    pure $ arg_mode.param :: modes
   else
     pure $ if modes = [] then [] else arg_mode.appl :: modes
 | _ := pure []
 
+meta def compute_arg_modes (cfg : compute_arg_modes_cfg) (n : name) (t : expr) :
+  tactic (list arg_mode) := do
+is_cls ← has_attribute' `class n,
+let cfg := if is_cls ∧ cfg.param_all_cls_args then {param_all_args := tt, ..cfg} else cfg,
+compute_arg_modes_core cfg t
+
 #print list.sum
-#eval mk_const `list.sum >>= infer_type >>= compute_arg_modes >>= trace
+#eval let n := `list.sum in mk_const n >>= infer_type >>= compute_arg_modes {} n >>= trace
 
 @[derive [has_to_string, has_repr, has_to_tactic_format, has_to_format]]
 meta structure trans_out :=
@@ -71,7 +84,8 @@ meta def trans := state_t trans_state tactic
 meta def trans.decl_out (n : name) (prf : expr) (f : fo_fml) : trans unit :=
 state_t.modify $ λ s, { out := ⟨n, f, prf⟩ :: s.out, ..s }
 
-meta def get_arg_modes_for_head (e : expr) : trans (list arg_mode) := do
+meta def get_arg_modes_for_head (e : expr) (cfg : compute_arg_modes_cfg := {}) :
+  trans (list arg_mode) := do
 let h := e.get_app_fn,
 let n := match h with
          | e@(expr.local_const n _ _ _) := n
@@ -88,7 +102,7 @@ match s.modes.find n with
       | c@(expr.const n _) := state_t.lift $ declaration.type <$> get_decl n
       | _ := pure $ mk_sorry `(Prop)
       end,
-  ms ← state_t.lift $ compute_arg_modes t,
+  ms ← state_t.lift $ compute_arg_modes cfg n t,
   state_t.put { modes := s.modes.insert n ms, ..s },
   pure ms
 end
@@ -163,7 +177,6 @@ meta mutual def trans_term, trans_type, trans_fml, trans_decl
 with trans_term : list expr → expr → trans fo_term | lctx t := do
 t ← state_t.lift $ zeta t,
 t ← state_t.lift $ head_beta t,
-t ← state_t.lift $ head_eta t,
 is_proof ← state_t.lift (is_proof t),
 if is_proof then pure term_prf else do
 let hd := t.get_app_fn,
@@ -192,16 +205,12 @@ match hd with
       ps ← ps.mmap (trans_term lctx),
       as ← as.mmap (trans_term lctx),
       pure $ list.foldl fo_app (fo_term.fn vn ps) as
-| _ := do
-  hd' ← match hd with
   | (app _ _) := state_t.lift $ fail "trans_term head is app"
-  | (const n _) := state_t.lift $ fail "trans_term const already handled"
-  | (local_const _ _ _ _) := state_t.lift $ fail "trans_term local_const already handled"
   | (sort _) := pure $ fo_term.const `_S
   | (elet pp_n t v b) := trans_term lctx (b.instantiate_var t)
   | (mvar n _ _) := pure $ fo_term.const n
-  | (macro _ es) :=
-    match is_sorry hd with
+  | (macro _ es) := do
+    hd' ← match is_sorry hd with
     | some t := do
       t' ← trans_term lctx t,
       pure $ fo_term.fn `_sorry [t']
@@ -219,34 +228,35 @@ match hd with
       trans_term lctx (f'.mk_app as.reverse)
     | _ := trans_term lctx hd
     end
-    end
+    end,
+    list.foldl fo_app hd' <$> as.mmap (trans_term lctx)
   | (var _) := state_t.lift (fail "open term")
   | (lam _ _ _ _) := do
-    let (f, as) := extract_from_lctx lctx hd,
+    let (f, capts) := extract_from_lctx lctx hd,
     (f', is_new) ← abbr f `_lambda,
+    get_arg_modes_for_head f' {param_all_args := ff},
     when is_new (do
       f_ty ← state_t.lift $ infer_type f,
       n ← get_var_name f',
       trans_decl n f f_ty,
       trans_decl (n.mk_string "eqn") f $ `(@eq.{1} %%f_ty %%f' %%f)),
-    trans_term lctx (f'.mk_app as.reverse)
+    trans_term lctx (f'.mk_app (capts.reverse++as))
   | (pi _ _ _ _) := do
-    let (f, as) := extract_from_lctx lctx hd,
+    let (f, capts) := extract_from_lctx lctx hd,
     (f', is_new) ← abbr f `_pi,
     when is_new (do
       f_ty ← state_t.lift $ infer_type f,
       n ← get_var_name f',
       trans_decl n f f_ty,
-      x ← state_t.lift $ mk_local_def `x hd,
-      eqn ← fo_fml.iff
-        <$> trans_type (x::as) x (f'.mk_app as.reverse)
-        <*> trans_type (x::as) x hd,
-      eqn ← as.mfoldl (λ eqn a, do a' ← get_var_name a, pure $ fo_fml.all a' eqn) eqn,
-      x' ← get_var_name x,
-      trans.decl_out (n.mk_string "eqn") f (fo_fml.all x' eqn)),
-    trans_term lctx (f'.mk_app as)
-  end,
-  list.foldl fo_app hd' <$> as.mmap (trans_term lctx)
+      when false $ do -- vampire really doesn't like this...
+        x ← state_t.lift $ mk_local_def `x hd,
+        eqn ← fo_fml.iff
+          <$> trans_type (x::capts) x (f'.mk_app capts.reverse)
+          <*> trans_type (x::capts) x hd,
+        eqn ← capts.mfoldl (λ eqn a, do a' ← get_var_name a, pure $ fo_fml.all a' eqn) eqn,
+        x' ← get_var_name x,
+        trans.decl_out (n.mk_string "eqn") f (fo_fml.all x' eqn)),
+    trans_term lctx (f'.mk_app (capts.reverse++as))
 end
 with trans_type : list expr → expr → expr → trans fo_fml | lctx e t := do
 t_is_prop ← state_t.lift $ is_prop t,
@@ -270,7 +280,7 @@ else match t with
     a' ← trans_fml lctx a,
     pure $ fo_fml.imp a' b'
   else do
-    a' ← trans_type lctx x a,
+    a' ← trans_type (x::lctx) x a,
     pure $ fo_fml.all x' $ fo_fml.imp a' b'
 | _ := do
   e' ← trans_term lctx e,
@@ -298,13 +308,15 @@ match t with
   fo_fml.all x' <$>
     (fo_fml.imp <$> trans_type (x::lctx) x c <*>
       trans_fml (x::lctx) `(@eq.{1} %%t' %%a' %%b'))
-| `(@eq %%t %%a %%b) := trans_fml lctx `(@heq.{1} %%t %%t %%a %%b)
-| `(@heq %%t %%t' %%a %%b) := do
+| `(@eq %%t %%a %%b) := do
   a_is_prop ← state_t.lift $ is_prop a,
   if a_is_prop then
     trans_fml lctx `(%%a ↔ %%b)
   else
     fo_fml.eq <$> trans_term lctx a <*> trans_term lctx b
+| `(@heq %%t %%t' %%a %%b) :=
+  fo_fml.and <$> (fo_fml.eq <$> trans_term lctx t <*> trans_term lctx t')
+    <*> (fo_fml.eq <$> trans_term lctx a <*> trans_term lctx b)
 | `(¬ %%a) := fo_fml.neg <$> trans_fml lctx a
 | `(@ne %%t %%a %%b) := trans_fml lctx `(¬ (@eq.{1} %%t %%a %%b))
 | `(%%a ∧ %%b) := fo_fml.and <$> trans_fml lctx a <*> trans_fml lctx b
@@ -362,7 +374,7 @@ meta def trans_decl' (d : declaration) : trans unit :=
 trans_decl d.to_name (const d.to_name (d.univ_params.map level.param)) d.type
 
 #eval do
-d ← get_decl `list.ilast,
+d ← get_decl `coe,
 ((), out) ← (trans_decl' d).run {},
 out.out.mmap $ λ out,
 trace $ tptpify_ann "axiom" out.n out.fml
@@ -440,9 +452,10 @@ meta def close_under_instances_core (all_cs : name_map (list name)) :
 
 meta def close_under_instances (ns : list name) : tactic (list name) := do
 is ← attribute.get_instances `instance,
-cs ← rb_lmap.of_list <$> is.mmap (λ i : name, do
-  t ← declaration.type <$> get_decl i,
-  pure (t.pi_codomain.get_app_fn.const_name, i)),
+is ← is.mmap get_decl,
+let is := is.filter (λ i, i.is_trusted),
+let cs := rb_lmap.of_list $ is.map $ λ i,
+  (i.type.pi_codomain.get_app_fn.const_name, i.to_name),
 name_set.to_list <$>
   close_under_instances_core cs (ns.filter (λ n, cs.contains n)) mk_name_set (name_set.of_list ns)
 
@@ -452,6 +465,9 @@ meta def close_under_equations (ns : list name) : tactic (list name) :=
     is_tc ← has_attribute' `instance n,
     if is_tc then pure [] else
       get_eqn_lemmas_for tt n <|> pure [])
+
+meta def bad_lemmas : name_set :=
+name_set.of_list []
 
 meta def do_trans (axs : list name) : tactic (format × list (string × expr × name)) :=
 (λ t : trans _, prod.fst <$> t.run {}) $ do
@@ -464,7 +480,8 @@ axs ← state_t.lift $ close_under_references axs,
 env ← state_t.lift get_env,
 cs ← state_t.lift $ name_set.of_list <$> attribute.get_instances `class,
 let axs := axs.filter (λ ax, ¬ (env.is_constructor ax ∧ cs.contains ax.get_prefix)),
-let axs := axs.qsort (λ a b : name, a.to_string < b.to_string),
+let axs := axs.filter (λ ax, ¬ bad_lemmas.contains ax),
+let axs := axs.qsort (λ a b : name, (a.lex_cmp b) = ordering.lt),
 axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),
 lctx ← state_t.lift tactic.local_context,
 lctx.mmap' (λ l, do
