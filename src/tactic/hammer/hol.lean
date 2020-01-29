@@ -563,15 +563,15 @@ meta def simplify : hol_tm → list hol_ty → simpl hol_tm
   state_t.lift $ replace_inst_by_true e lctx
 | (cast t a) lctx := simplify a lctx
 
-#eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma t >>= trace
-#eval do t ← tactic.mk_const ``vector.cons >>= infer_type, of_lemma t >>= trace
-private def foo : ∀ f g : ℕ → ℕ, (∀ x, f x = g x) → f = g := @_root_.funext ℕ (λ _, ℕ)
-#eval do t ← tactic.mk_const ``foo >>= infer_type, of_lemma t >>= trace
-#eval do t ← tactic.mk_const ``equiv.equiv_congr >>= infer_type, of_lemma_core_top t [] [] >>= trace
-#eval do t ← tactic.mk_const ``equiv.Pi_congr_right >>= infer_type, of_lemma_core_top t [] [] >>= trace
+-- #eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma t >>= trace
+-- #eval do t ← tactic.mk_const ``vector.cons >>= infer_type, of_lemma t >>= trace
+-- private def foo : ∀ f g : ℕ → ℕ, (∀ x, f x = g x) → f = g := @_root_.funext ℕ (λ _, ℕ)
+-- #eval do t ← tactic.mk_const ``foo >>= infer_type, of_lemma t >>= trace
+-- #eval do t ← tactic.mk_const ``equiv.equiv_congr >>= infer_type, of_lemma_core_top t [] [] >>= trace
+-- #eval do t ← tactic.mk_const ``equiv.Pi_congr_right >>= infer_type, of_lemma_core_top t [] [] >>= trace
 
-set_option pp.all true
-#eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma_core_top t [] [] >>= trace ∘ list.dup_by_native id ∘ exprs
+-- set_option pp.all true
+-- #eval do t ← tactic.mk_const ``add_zero >>= infer_type, of_lemma_core_top t [] [] >>= trace ∘ list.dup_by_native id ∘ exprs
 
 end hol_tm
 
