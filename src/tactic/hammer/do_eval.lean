@@ -39,8 +39,7 @@ let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas1 axs goal,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
@@ -48,8 +47,7 @@ meta def eval_hammer1_oracle (for_env : environment) (axs : list name) (desc : s
 goal ← reverted_target,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas1 axs goal,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
@@ -61,22 +59,14 @@ trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas2_core tptp ax_names,
-trace "eprover-ho proof uses the following lemmas:",
-lems.mmap' (λ ⟨l, t⟩, do
-  l' ← pp l,
-  t ← pp t,
-  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
 meta def eval_hammer2_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas2_core tptp ax_names,
-trace "eprover-ho proof uses the following lemmas:",
-lems.mmap' (λ ⟨l, t⟩, do
-  l' ← pp l,
-  t ← pp t,
-  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
 meta def eval_hammer3 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
@@ -87,23 +77,33 @@ trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
-trace "eprover-ho proof uses the following lemmas:",
-lems.mmap' (λ ⟨l, t⟩, do
-  l' ← pp l,
-  t ← pp t,
-  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
 meta def eval_hammer3_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
-trace "eprover-ho proof uses the following lemmas:",
-lems.mmap' (λ ⟨l, t⟩, do
-  l' ← pp l,
-  t ← pp t,
-  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
+
+meta def eval_hammer4 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+axs ← timetac ("SELECT " ++ desc) $ retrieve $
+  set_env_core for_env >> reverted_target >>= select_for_goal,
+let axs := (axs.take max_lemmas).map (λ a, a.1),
+trace axs,
+trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
+lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
+tactic.intros,
+timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
+
+meta def eval_hammer4_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
+lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
+tactic.intros,
+timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
 
 meta def eval_super (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
@@ -151,8 +151,11 @@ end
 
 meta def do_eval_core (env : environment) (n : name) : tactic unit := do
 trace $ ">>> " ++ to_string n,
-cs ← expr.constants <$> declaration.value <$> get_decl n,
+proof ← declaration.value <$> get_decl n,
+let cs := proof.constants,
 trace cs,
+trace $ "PROOF_NUM_LEMMAS " ++ to_string cs.length,
+trace $ "PROOF_SIZE " ++ to_string proof.get_weight,
 my_timetac (to_string n ++ " refl 0") eval_refl,
 my_timetac (to_string n ++ " library_search 0") (eval_library_search env),
 my_timetac (to_string n ++ " finish 0") (eval_finish env),
@@ -161,6 +164,7 @@ my_timetac (to_string n ++ " simp 0") (eval_simp env),
 my_timetac (to_string n ++ " super 10") (eval_super env 10),
 my_timetac (to_string n ++ " super oracle") (eval_super_oracle env cs),
 my_timetac (to_string n ++ " hammer1 10") (eval_hammer1 env 10),
+my_timetac (to_string n ++ " hammer1 100") (eval_hammer1 env 100),
 my_timetac (to_string n ++ " hammer1 oracle") (eval_hammer1_oracle env cs),
 my_timetac (to_string n ++ " hammer2 10") (eval_hammer2 env 10),
 my_timetac (to_string n ++ " hammer2 100") (eval_hammer2 env 100),
@@ -168,6 +172,9 @@ my_timetac (to_string n ++ " hammer2 oracle") (eval_hammer2_oracle env cs),
 my_timetac (to_string n ++ " hammer3 10") (eval_hammer3 env 10),
 my_timetac (to_string n ++ " hammer3 100") (eval_hammer3 env 100),
 my_timetac (to_string n ++ " hammer3 oracle") (eval_hammer3_oracle env cs),
+my_timetac (to_string n ++ " hammer4 10") (eval_hammer4 env 10),
+my_timetac (to_string n ++ " hammer4 100") (eval_hammer4 env 100),
+my_timetac (to_string n ++ " hammer4 oracle") (eval_hammer4_oracle env cs),
 skip
 
 meta def do_eval_for_thm (decl_name : name) : tactic unit := retrieve $ do

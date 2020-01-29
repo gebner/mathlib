@@ -61,8 +61,8 @@ is_cls ← has_attribute' `class n,
 let cfg := if is_cls ∧ cfg.param_all_cls_args then {param_all_args := tt, ..cfg} else cfg,
 compute_arg_modes_core cfg t
 
-#print list.sum
-#eval let n := `list.sum in mk_const n >>= infer_type >>= compute_arg_modes {} n >>= trace
+-- #print list.sum
+-- #eval let n := `list.sum in mk_const n >>= infer_type >>= compute_arg_modes {} n >>= trace
 
 @[derive [has_to_string, has_repr, has_to_tactic_format, has_to_format]]
 meta structure trans_out :=
@@ -368,16 +368,14 @@ t' ←
     trans_type [] e t,
 trans.decl_out n e t'
 
-#print ""
-
 meta def trans_decl' (d : declaration) : trans unit :=
 trans_decl d.to_name (const d.to_name (d.univ_params.map level.param)) d.type
 
-#eval do
-d ← get_decl `coe,
-((), out) ← (trans_decl' d).run {},
-out.out.mmap $ λ out,
-trace $ tptpify_ann "axiom" out.n out.fml
+-- #eval do
+-- d ← get_decl `coe,
+-- ((), out) ← (trans_decl' d).run {},
+-- out.out.mmap $ λ out,
+-- trace $ tptpify_ann "axiom" out.n out.fml
 
 meta def is_good_const : name → Prop
 | ``Exists := ff
@@ -520,14 +518,14 @@ when (exitv ≠ 0) $ io.fail $ "process exited with status " ++ repr exitv,
 return buf.to_string
 
 meta def run_vampire (tptp : string) : tactic string :=
-timetac "vampire" $
+timetac "vampire took" $
 exec_cmd "vampire" ["-p", "tptp"] tptp
 
 meta def filter_lemmas (axs : list name) : tactic (list expr) := do
 (tptp, ax_names) ← do_trans axs,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
-tptp_out ← timetac "vampire" $ exec_cmd "bash" ["-c",
+tptp_out ← timetac "vampire took" $ exec_cmd "bash" ["-c",
   "vampire -p tptp -t 30s --output_axiom_names on | " ++
     "grep -oP '(?<=file\\(unknown,).*?(?=\\))'"]
   tptp.to_string,
@@ -540,7 +538,7 @@ axs ← timetac "Premise selection took" $ select_for_goal rgoal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-timetac "Vampire took" $ filter_lemmas axs
+timetac "Lemma filtering took" $ filter_lemmas axs
 
 meta def reconstruct (axs : list expr) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
@@ -552,16 +550,16 @@ axs ← list.join <$> (axs.mmap $ λ ax,
 axs ← (++ axs) <$> (tactic.local_context >>= list.mmap super.clause.of_proof),
 super.solve_with_goal {} axs
 
--- set_option profiler true
-#eval do
-let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
-let goal : expr := `(∀ x : nat, x + 0 ≤ x),
--- axs ← select_for_goal goal,
-let axs := [(``nat.le_succ, ()), (``le_refl, ()), (``add_zero, ())],
-tactic.assert `h goal,
-tactic.intros,
-(tptp, _) ← do_trans ((axs.take 20).map prod.fst),
-trace tptp
+-- -- set_option profiler true
+-- #eval do
+-- let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
+-- let goal : expr := `(∀ x : nat, x + 0 ≤ x),
+-- -- axs ← select_for_goal goal,
+-- let axs := [(``nat.le_succ, ()), (``le_refl, ()), (``add_zero, ())],
+-- tactic.assert `h goal,
+-- tactic.intros,
+-- (tptp, _) ← do_trans ((axs.take 20).map prod.fst),
+-- trace tptp
 
 end fotr2
 
@@ -579,7 +577,7 @@ lems ←
   | none := hammer.fotr2.find_lemmas max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "Vampire took" $
+    timetac "Lemma filtering took" $
       hammer.fotr2.filter_lemmas axs
   end,
 trace "Vampire proof uses the following lemmas:",
@@ -592,7 +590,7 @@ lems ←
   | none := hammer.fotr2.find_lemmas max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "Vampire took" $
+    timetac "Lemma filtering took" $
       hammer.fotr2.filter_lemmas axs
   end,
 trace "Vampire proof uses the following lemmas:",
@@ -603,5 +601,5 @@ hammer.fotr2.reconstruct lems
 end interactive
 end tactic
 
-set_option profiler true
-example (x y : ℕ) : x ≤ max x (y) := by hammer4
+-- set_option profiler true
+-- example (x y : ℕ) : x ≤ max x (y) := by hammer4

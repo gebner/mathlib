@@ -324,7 +324,7 @@ lems'' ← simplify_lems lems',
 
 meta def filter_lemmas3_core (tptp : format) (ax_names : list (string × expr × hol_tm)) :
   tactic (list (expr × hol_tm)) := do
-trace tptp,
+-- trace tptp,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 -- (failure : tactic unit),
@@ -357,21 +357,21 @@ super.solve_with_goal {} axs
 -- set_option trace.type_context.is_def_eq true
 -- set_option trace.type_context.is_def_eq_detail true
 
-example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
-  (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
-ls ← local_context,
-l1 ← mk_const ``add_comm,
-l2 ← mk_const ``le_antisymm,
-l3 ← mk_const ``exists_congr,
-l4 ← mk_const ``zero_sub,
-let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
--- ls ← (λ x, [x]) <$> get_local `h3,
-ls ← monomorphize2 ls,
-ls ← simplify_lems ls,
-trace ls,
--- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
-(to_tf0_file2 ls).run >>= trace,
-triv
+-- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
+--   (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
+-- ls ← local_context,
+-- l1 ← mk_const ``add_comm,
+-- l2 ← mk_const ``le_antisymm,
+-- l3 ← mk_const ``exists_congr,
+-- l4 ← mk_const ``zero_sub,
+-- let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
+-- -- ls ← (λ x, [x]) <$> get_local `h3,
+-- ls ← monomorphize2 ls,
+-- ls ← simplify_lems ls,
+-- trace ls,
+-- -- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
+-- (to_tf0_file2 ls).run >>= trace,
+-- triv
 
 -- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0) : true :=
 -- by feature_search
@@ -388,7 +388,7 @@ lems ←
   | none := hammer.find_lemmas3 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "eprover-ho took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas3 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",
@@ -405,7 +405,7 @@ lems ←
   | none := hammer.find_lemmas3 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "eprover-ho took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas3 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",

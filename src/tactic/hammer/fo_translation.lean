@@ -286,7 +286,7 @@ meta def mk_h_defeq_decl (n1 n2 : name) : tactic expr := do
 (e2, t2) ← get_decl n2 >>= decl_mk_const,
 mk_h_defeq e1 e2 t1 t2
 
-#eval mk_h_defeq_decl ``nat.semiring ``comm_semiring.to_semiring >>= trace
+-- #eval mk_h_defeq_decl ``nat.semiring ``comm_semiring.to_semiring >>= trace
 
 meta def add_instance_defeq (i1 i2 : name) : trans unit :=
 (do eqn ← state_t.lift $ mk_h_defeq_decl i1 i2,
@@ -355,7 +355,7 @@ meta def filter_lemmas1 (axs : list name) (goal : expr) : tactic (list name) := 
 (tptp, ax_names) ← do_trans axs goal,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
-tptp_out ← exec_cmd "bash" ["-c",
+tptp_out ← timetac "vampire took" $ exec_cmd "bash" ["-c",
   "vampire -p tptp -t 30s --output_axiom_names on | " ++
     "grep -oP '(?<=file\\(unknown,).*?(?=\\))'"]
   tptp.to_string,
@@ -367,7 +367,7 @@ axs ← timetac "Premise selection took" $ select_for_goal goal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,
-timetac "Vampire took" $ filter_lemmas1 axs goal
+timetac "Lemma filtering took" $ filter_lemmas1 axs goal
 
 meta def reconstruct1 (axs : list name) : tactic unit :=
 focus1 $ super.with_ground_mvars $ do
@@ -376,13 +376,13 @@ axs ← list.join <$> (axs.mmap $ λ ax,
 axs ← (++ axs) <$> (tactic.local_context >>= list.mmap super.clause.of_proof),
 super.solve_with_goal {} axs
 
-#eval do
-let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
-let goal : expr := `(∀ x : nat, x ≤ x),
--- axs ← select_for_goal goal,
-let axs := [(``nat.le_succ, ()), (``le_refl, ())],
-(tptp, _) ← do_trans ((axs.take 20).map prod.fst) goal,
-trace tptp
+-- #eval do
+-- let goal : expr := `(∀ x y : nat, x < y ∨ x ≥ y),
+-- let goal : expr := `(∀ x : nat, x ≤ x),
+-- -- axs ← select_for_goal goal,
+-- let axs := [(``nat.le_succ, ()), (``le_refl, ())],
+-- (tptp, _) ← do_trans ((axs.take 20).map prod.fst) goal,
+-- trace tptp
 
 end hammer
 
@@ -399,7 +399,7 @@ lems ←
   | none := hammer.find_lemmas1 goal max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "Vampire took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas1 axs goal
   end,
 trace "Vampire proof uses the following lemmas:",
@@ -413,7 +413,7 @@ lems ←
   | none := hammer.find_lemmas1 goal max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "Vampire took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas1 axs goal
   end,
 trace "Vampire proof uses the following lemmas:",

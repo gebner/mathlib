@@ -483,23 +483,23 @@ focus1 $ super.with_ground_mvars $ do
 axs ← axs.mmap $ λ ⟨pr, ty⟩, super.clause.of_type_and_proof ty pr,
 super.solve_with_goal {} axs
 
-set_option pp.all true
-example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
-  (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
-ls ← local_context,
-l1 ← mk_const ``add_comm,
-l2 ← mk_const ``le_antisymm,
-l3 ← mk_const ``exists_congr,
-l4 ← mk_const ``zero_sub,
-let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
--- ls ← (λ x, [x]) <$> get_local `h3,
-ls' ← monomorphize ls 3,
-ls'' ← intern_lems ls',
-trace_state,
-trace ls'',
--- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
-(to_tf0_file ls''.1 ls''.2).run >>= trace,
-triv
+-- set_option pp.all true
+-- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0)
+--   (h4 : ∃ i : ℤ, i ≤ i + 1) : true := by do
+-- ls ← local_context,
+-- l1 ← mk_const ``add_comm,
+-- l2 ← mk_const ``le_antisymm,
+-- l3 ← mk_const ``exists_congr,
+-- l4 ← mk_const ``zero_sub,
+-- let ls : list expr := l1 :: l2 :: l3 :: l4 :: ls,
+-- -- ls ← (λ x, [x]) <$> get_local `h3,
+-- ls' ← monomorphize ls 3,
+-- ls'' ← intern_lems ls',
+-- trace_state,
+-- trace ls'',
+-- -- ls''.mmap' (λ l'', (to_tf0_tm [] l''.2).run >>= trace),
+-- (to_tf0_file ls''.1 ls''.2).run >>= trace,
+-- triv
 
 -- example (x y : ℤ) (h : x ∣ y) (h2 : x ≤ y) (h3 : ¬ x + y < 0) : true :=
 -- by feature_search
@@ -516,7 +516,7 @@ lems ←
   | none := hammer.find_lemmas2 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "eprover-ho took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas2 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",
@@ -533,7 +533,7 @@ lems ←
   | none := hammer.find_lemmas2 max_lemmas
   | some axs := do
     axs.mmap' (λ ax, get_decl ax),
-    timetac "eprover-ho took" $
+    timetac "Lemma filtering took" $
       hammer.filter_lemmas2 axs
   end,
 trace "eprover-ho proof uses the following lemmas:",
