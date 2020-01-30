@@ -1,8 +1,5 @@
 import tactic.core super.utils data.equiv.basic data.vector
 
-instance sort.inhabited : inhabited (Sort*) :=
-⟨pempty⟩
-
 instance int.inhabited' : inhabited ℤ := ⟨0⟩
 
 open tactic
