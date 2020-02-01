@@ -19,9 +19,7 @@ set_env_core $
 done
 
 meta def eval_tidy (for_env : environment) (_ : string) : tactic unit := do
--- set_env_core $
---   if for_env.contains ``tactic.interactive.tidy then for_env else
---   for_env.import' (module_info.of_module_name `tactic.tidy),
+set_env_core for_env,
 `[tidy],
 done
 
@@ -32,6 +30,7 @@ intros,
 done
 
 meta def eval_hammer1 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 goal ← reverted_target,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
   set_env_core for_env >> select_for_goal goal,
@@ -39,19 +38,23 @@ let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas1 axs goal,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
 meta def eval_hammer1_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 goal ← reverted_target,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas1 axs goal,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
 meta def eval_hammer2 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
   set_env_core for_env >> revert_all >> target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
@@ -59,17 +62,21 @@ trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas2_core tptp ax_names,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
 meta def eval_hammer2_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas2_core tptp ax_names,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
 meta def eval_hammer3 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
   set_env_core for_env >> revert_all >> target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
@@ -77,35 +84,43 @@ trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
 meta def eval_hammer3_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
 meta def eval_hammer4 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
   set_env_core for_env >> reverted_target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
 
 meta def eval_hammer4_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
+trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
 
 meta def eval_super (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 goal ← retrieve (revert_all >> target),
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
   set_env_core for_env >> select_for_goal goal,
@@ -124,6 +139,7 @@ lems ← lems.mmap super.clause.of_proof,
 super.solve_with_goal {} lems
 
 meta def eval_super_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
+set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
 goal ← retrieve (revert_all >> target),
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 let axs := goal.constants.filter is_good_const ++ axs,
