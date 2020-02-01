@@ -392,7 +392,7 @@ namespace interactive
 
 open interactive interactive.types lean.parser
 
-meta def find_lemmas1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+private meta def find_lemmas1_core (axs : option (list name)) (max_lemmas : ℕ) : tactic (list name) := do
 goal ← reverted_target,
 lems ←
   match axs with
@@ -402,22 +402,16 @@ lems ←
     timetac "Lemma filtering took" $
       hammer.filter_lemmas1 axs goal
   end,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+trace "\nTry:",
+trace $ to_fmt "by super " ++ (to_fmt lems).group,
+pure lems
+
+meta def find_lemmas1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+find_lemmas1_core axs max_lemmas,
 admit
 
 meta def hammer1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
-goal ← reverted_target,
-lems ←
-  match axs with
-  | none := hammer.find_lemmas1 goal max_lemmas
-  | some axs := do
-    axs.mmap' (λ ax, get_decl ax),
-    timetac "Lemma filtering took" $
-      hammer.filter_lemmas1 axs goal
-  end,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+lems ← find_lemmas1_core axs max_lemmas,
 tactic.intros,
 hammer.reconstruct1 lems
 

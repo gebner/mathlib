@@ -382,7 +382,14 @@ namespace tactic
 namespace interactive
 open interactive interactive.types lean.parser
 
-meta def find_lemmas3 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
+private meta def get_lemma_name : expr → name
+| (expr.app a _) := get_lemma_name a
+| (expr.lam _ _ _ b) := get_lemma_name b
+| (expr.const n _) := n
+| lc@(expr.local_const _ _ _ _) := lc.local_pp_name
+| _ := `_
+
+private meta def find_lemmas3_core (axs : option (list name)) (max_lemmas : ℕ) : tactic (list (expr × hammer.hol_tm)) := do
 lems ←
   match axs with
   | none := hammer.find_lemmas3 max_lemmas
@@ -397,23 +404,16 @@ lems.mmap' (λ ⟨l, t⟩, do
   -- t ← infer_type l >>= pp,
   t ← pp t,
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+trace "\nTry:",
+trace $ to_fmt "by super " ++ (to_fmt $ lems.map $ λ ⟨lem, _⟩, get_lemma_name lem).group,
+pure lems
+
+meta def find_lemmas3 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
+find_lemmas3_core axs max_lemmas,
 admit
 
 meta def hammer3 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
-lems ←
-  match axs with
-  | none := hammer.find_lemmas3 max_lemmas
-  | some axs := do
-    axs.mmap' (λ ax, get_decl ax),
-    timetac "Lemma filtering took" $
-      hammer.filter_lemmas3 axs
-  end,
-trace "eprover-ho proof uses the following lemmas:",
-lems.mmap' (λ ⟨l, t⟩, do
-  l' ← pp l,
-  -- t ← infer_type l >>= pp,
-  t ← pp t,
-  trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
+lems ← find_lemmas3_core axs max_lemmas,
 hammer.reconstruct3 lems
 
 end interactive

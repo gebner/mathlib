@@ -571,7 +571,7 @@ namespace interactive
 
 open interactive interactive.types lean.parser hammer.fotr2
 
-meta def find_lemmas4 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+private meta def find_lemmas4_core (axs : option (list name)) (max_lemmas : ℕ) : tactic (list expr) := do
 lems ←
   match axs with
   | none := hammer.fotr2.find_lemmas max_lemmas
@@ -580,21 +580,21 @@ lems ←
     timetac "Lemma filtering took" $
       hammer.fotr2.filter_lemmas axs
   end,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+trace "\nTry:",
+trace $ to_fmt "by super " ++ (to_fmt $ lems.map $ λ lem,
+  match lem.get_app_fn with
+  | (expr.const n _) := n
+  | (expr.local_const _ n _ _) := n
+  | _ := default name
+  end).group,
+pure lems
+
+meta def find_lemmas4 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do
+find_lemmas4_core axs max_lemmas,
 admit
 
 meta def hammer4 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
-lems ←
-  match axs with
-  | none := hammer.fotr2.find_lemmas max_lemmas
-  | some axs := do
-    axs.mmap' (λ ax, get_decl ax),
-    timetac "Lemma filtering took" $
-      hammer.fotr2.filter_lemmas axs
-  end,
-trace "Vampire proof uses the following lemmas:",
-lems.mmap' $ λ l, trace $ "  " ++ l.to_string,
+lems ← find_lemmas4_core axs max_lemmas,
 tactic.intros,
 hammer.fotr2.reconstruct lems
 
