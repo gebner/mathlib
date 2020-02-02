@@ -6,34 +6,26 @@ open tactic
 meta def eval_refl (_ : string) : tactic unit :=
 `[intros, exact rfl <|> exact iff.rfl]
 
-meta def eval_library_search (for_env : environment) (_ : string) : tactic unit := do
-set_env_core for_env,
+meta def eval_library_search (_ : string) : tactic unit := do
 library_search >>= trace,
 skip
 
-meta def eval_finish (for_env : environment) (_ : string) : tactic unit := do
-set_env_core $
-  if for_env.contains ``tactic.interactive.finish then for_env else
-  for_env.import' (module_info.of_module_name `tactic.finish),
+meta def eval_finish (_ : string) : tactic unit := do
 `[finish],
 done
 
-meta def eval_tidy (for_env : environment) (_ : string) : tactic unit := do
-set_env_core for_env,
+meta def eval_tidy (_ : string) : tactic unit := do
 `[tidy],
 done
 
-meta def eval_simp (for_env : environment) (_ : string) : tactic unit := do
-set_env_core for_env,
+meta def eval_simp (_ : string) : tactic unit := do
 intros,
 `[simp *],
 done
 
-meta def eval_hammer1 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer1 (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← reverted_target,
-axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  set_env_core for_env >> select_for_goal goal,
+axs ← timetac ("SELECT " ++ desc) $ retrieve $ select_for_goal goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -43,8 +35,7 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
-meta def eval_hammer1_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer1_oracle (axs : list name) (desc : string) : tactic unit := do
 goal ← reverted_target,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas1 axs goal,
@@ -53,10 +44,9 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
-meta def eval_hammer2 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer2 (max_lemmas : ℕ) (desc : string) : tactic unit := do
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  set_env_core for_env >> revert_all >> target >>= select_for_goal,
+  revert_all >> target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -66,8 +56,7 @@ trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
-meta def eval_hammer2_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer2_oracle (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas2_core tptp ax_names,
@@ -75,10 +64,9 @@ trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
-meta def eval_hammer3 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer3 (max_lemmas : ℕ) (desc : string) : tactic unit := do
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  set_env_core for_env >> revert_all >> target >>= select_for_goal,
+  revert_all >> target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -88,8 +76,7 @@ trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
-meta def eval_hammer3_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer3_oracle (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 (tptp, ax_names) ← timetac ("MONOM " ++ desc) $ mk_monom2_file axs,
 lems ← timetac ("PROVER " ++ desc) $ filter_lemmas3_core tptp ax_names,
@@ -97,10 +84,9 @@ trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
-meta def eval_hammer4 (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer4 (max_lemmas : ℕ) (desc : string) : tactic unit := do
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  set_env_core for_env >> reverted_target >>= select_for_goal,
+  reverted_target >>= select_for_goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -110,8 +96,7 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
 
-meta def eval_hammer4_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_hammer4_oracle (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
 trace lems,
@@ -119,11 +104,9 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
 
-meta def eval_super (for_env : environment) (max_lemmas : ℕ) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_super (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
-axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  set_env_core for_env >> select_for_goal goal,
+axs ← timetac ("SELECT " ++ desc) $ retrieve $ select_for_goal goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -138,8 +121,7 @@ focus1 $ super.with_ground_mvars $ do
 lems ← lems.mmap super.clause.of_proof,
 super.solve_with_goal {} lems
 
-meta def eval_super_oracle (for_env : environment) (axs : list name) (desc : string) : tactic unit := do
-set_env_core $ for_env.import_dependencies $ module_info.of_module_name `super,
+meta def eval_super_oracle (axs : list name) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 let axs := goal.constants.filter is_good_const ++ axs,
@@ -165,7 +147,7 @@ match try_for time_limit (tac desc) s with
   trace $ "SUCCESS " ++ desc
 end
 
-meta def do_eval_core (env : environment) (n : name) : tactic unit := do
+meta def do_eval_core (n : name) : tactic unit := do
 trace $ ">>> " ++ to_string n,
 proof ← declaration.value <$> get_decl n,
 let cs := proof.constants,
@@ -173,24 +155,24 @@ trace cs,
 trace $ "PROOF_NUM_LEMMAS " ++ to_string cs.length,
 trace $ "PROOF_SIZE " ++ to_string proof.get_weight,
 my_timetac (to_string n ++ " refl 0") eval_refl,
-my_timetac (to_string n ++ " library_search 0") (eval_library_search env),
-my_timetac (to_string n ++ " finish 0") (eval_finish env),
-my_timetac (to_string n ++ " tidy 0") (eval_tidy env),
-my_timetac (to_string n ++ " simp 0") (eval_simp env),
-my_timetac (to_string n ++ " super 10") (eval_super env 10),
-my_timetac (to_string n ++ " super oracle") (eval_super_oracle env cs),
-my_timetac (to_string n ++ " hammer1 10") (eval_hammer1 env 10),
-my_timetac (to_string n ++ " hammer1 100") (eval_hammer1 env 100),
-my_timetac (to_string n ++ " hammer1 oracle") (eval_hammer1_oracle env cs),
-my_timetac (to_string n ++ " hammer2 10") (eval_hammer2 env 10),
-my_timetac (to_string n ++ " hammer2 100") (eval_hammer2 env 100),
-my_timetac (to_string n ++ " hammer2 oracle") (eval_hammer2_oracle env cs),
-my_timetac (to_string n ++ " hammer3 10") (eval_hammer3 env 10),
-my_timetac (to_string n ++ " hammer3 100") (eval_hammer3 env 100),
-my_timetac (to_string n ++ " hammer3 oracle") (eval_hammer3_oracle env cs),
-my_timetac (to_string n ++ " hammer4 10") (eval_hammer4 env 10),
-my_timetac (to_string n ++ " hammer4 100") (eval_hammer4 env 100),
-my_timetac (to_string n ++ " hammer4 oracle") (eval_hammer4_oracle env cs),
+my_timetac (to_string n ++ " library_search 0") eval_library_search,
+my_timetac (to_string n ++ " finish 0") eval_finish,
+my_timetac (to_string n ++ " tidy 0") eval_tidy,
+my_timetac (to_string n ++ " simp 0") eval_simp,
+my_timetac (to_string n ++ " super 10") (eval_super 10),
+my_timetac (to_string n ++ " super oracle") (eval_super_oracle cs),
+my_timetac (to_string n ++ " hammer1 10") (eval_hammer1 10),
+my_timetac (to_string n ++ " hammer1 100") (eval_hammer1 100),
+my_timetac (to_string n ++ " hammer1 oracle") (eval_hammer1_oracle cs),
+my_timetac (to_string n ++ " hammer2 10") (eval_hammer2 10),
+my_timetac (to_string n ++ " hammer2 100") (eval_hammer2 100),
+my_timetac (to_string n ++ " hammer2 oracle") (eval_hammer2_oracle cs),
+my_timetac (to_string n ++ " hammer3 10") (eval_hammer3 10),
+my_timetac (to_string n ++ " hammer3 100") (eval_hammer3 100),
+my_timetac (to_string n ++ " hammer3 oracle") (eval_hammer3_oracle cs),
+my_timetac (to_string n ++ " hammer4 10") (eval_hammer4 10),
+my_timetac (to_string n ++ " hammer4 100") (eval_hammer4 100),
+my_timetac (to_string n ++ " hammer4 oracle") (eval_hammer4_oracle cs),
 skip
 
 meta def do_eval_for_thm (decl_name : name) : tactic unit := retrieve $ do
@@ -201,8 +183,11 @@ decl ← get_decl decl_name,
 goal ← mk_meta_var decl.type,
 set_goals [goal], intros,
 trace_state,
-let env_for_thm := environment.for_decl_of_imported_module lean_file decl_name,
-do_eval_core env_for_thm decl_name
+retrieve $ do
+let env := environment.for_decl_of_imported_module lean_file decl_name,
+let env := env.import_dependencies $ module_info.of_module_name `tactic.hammer.do_eval_deps,
+set_env_core env,
+do_eval_core decl_name
 
 -- #eval do_eval_for_thm ``inv_mul_cancel_left
 
