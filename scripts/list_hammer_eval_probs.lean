@@ -35,7 +35,9 @@ def string.map (f : char → char) (s : string) : string :=
 
 #eval do
 e ← get_env,
-e.list_theorems.mmap' $ λ n, do
+let before_hammer_env :=
+  environment.from_imported_module_name `tactic.hammer.do_eval_deps,
+(e.list_theorems.filter (λ n, ¬ before_hammer_env.contains n)).mmap' $ λ n, do
   let mod_name := mod_name_of_decl e n,
   let fn := (to_string mod_name ++ ".." ++ to_string n).map
     (λ c, if c = '\'' ∨ c = '/' then '_' else c) ++ ".lean",
