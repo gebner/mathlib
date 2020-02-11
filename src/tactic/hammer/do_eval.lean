@@ -154,6 +154,11 @@ let cs := proof.constants,
 trace cs,
 trace $ "PROOF_NUM_LEMMAS " ++ to_string cs.length,
 trace $ "PROOF_SIZE " ++ to_string proof.get_weight,
+env ← get_env,
+some lean_file ← pure $ env.decl_olean n,
+let env := environment.for_decl_of_imported_module lean_file n,
+let env := env.import_dependencies $ module_info.of_module_name `tactic.hammer.do_eval_deps,
+set_env_core env,
 my_timetac (to_string n ++ " refl 0") eval_refl,
 my_timetac (to_string n ++ " library_search 0") eval_library_search,
 my_timetac (to_string n ++ " finish 0") eval_finish,
@@ -178,15 +183,11 @@ skip
 meta def do_eval_for_thm (decl_name : name) : tactic unit := retrieve $ do
 unfreeze_local_instances,
 e ← get_env,
-some lean_file ← pure $ e.decl_olean decl_name,
 decl ← get_decl decl_name,
 goal ← mk_meta_var decl.type,
 set_goals [goal], intros,
 trace_state,
 retrieve $ do
-let env := environment.for_decl_of_imported_module lean_file decl_name,
-let env := env.import_dependencies $ module_info.of_module_name `tactic.hammer.do_eval_deps,
-set_env_core env,
 do_eval_core decl_name
 
 -- #eval do_eval_for_thm ``inv_mul_cancel_left
