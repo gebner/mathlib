@@ -593,6 +593,19 @@ lemma finset.prod_attach_univ [fintype α] [comm_monoid β] (f : {a : α // a �
   univ.attach.prod (λ x, f x) = univ.prod (λ x, f ⟨x, (mem_univ _)⟩) :=
 prod_bij (λ x _, x.1) (λ _ _, mem_univ _) (λ _ _ , by simp) (by simp) (λ b _, ⟨⟨b, mem_univ _⟩, by simp⟩)
 
+@[to_additive]
+lemma finset.range_prod_eq_univ_prod [comm_monoid β] (n : ℕ) (f : ℕ → β) :
+  (range n).prod f = univ.prod (λ (k : fin n), f k) :=
+begin
+  symmetry,
+  refine prod_bij (λ k hk, k) _ _ _ _,
+  { rintro ⟨k, hk⟩ _, simp * },
+  { rintro ⟨k, hk⟩ _, simp * },
+  { intros, rwa fin.eq_iff_veq },
+  { intros k hk, rw mem_range at hk,
+    exact ⟨⟨k, hk⟩, mem_univ _, rfl⟩ }
+end
+
 section equiv
 
 open list equiv equiv.perm
@@ -710,6 +723,15 @@ card_perms_of_finset _
 lemma fintype.card_equiv [fintype α] [fintype β] (e : α ≃ β) :
   fintype.card (α ≃ β) = (fintype.card α).fact :=
 fintype.card_congr (equiv_congr (equiv.refl α) e) ▸ fintype.card_perm
+
+lemma univ_eq_singleton_of_card_one {α} [fintype α] (x : α) (h : fintype.card α = 1) :
+  (univ : finset α) = finset.singleton x :=
+begin
+  apply symm,
+  apply eq_of_subset_of_card_le (subset_univ (finset.singleton x)),
+  apply le_of_eq,
+  simp [h, finset.card_univ]
+end
 
 end equiv
 
