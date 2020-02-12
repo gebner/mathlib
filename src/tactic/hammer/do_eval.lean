@@ -94,7 +94,7 @@ lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
 trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
-timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
+timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct (lems.map prod.fst)
 
 meta def eval_hammer4_oracle (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -102,7 +102,7 @@ lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
 trace lems,
 trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
-timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct lems
+timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct (lems.map prod.fst)
 
 meta def eval_super (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
