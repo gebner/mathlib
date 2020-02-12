@@ -390,6 +390,7 @@ meta def close_under_references_core : list name → rb_set name → tactic (rb_
   if s.contains n then
     close_under_references_core ns s
   else do
+    ff ← is_instance n | close_under_references_core ns s,
     cs ← (do d ← get_decl n, pure $ some $ d.type.constants.filter is_good_const) <|> pure none,
     match cs with
     | none := close_under_references_core ns s
@@ -474,13 +475,20 @@ let axs := rgoal.constants.filter is_good_const ++ axs,
 axs ← state_t.lift $ close_under_references axs,
 axs ← state_t.lift $ close_under_equations axs,
 axs ← state_t.lift $ close_under_instances axs,
-axs ← state_t.lift $ close_under_references axs,
 env ← state_t.lift get_env,
 cs ← state_t.lift $ name_set.of_list <$> attribute.get_instances `class,
 let axs := axs.filter (λ ax, ¬ (env.is_constructor ax ∧ cs.contains ax.get_prefix)),
 let axs := axs.filter (λ ax, ¬ bad_lemmas.contains ax),
 let axs := axs.qsort (λ a b : name, (a.lex_cmp b) = ordering.lt),
-axs.mmap' (λ n, do d ← state_t.lift $ get_decl n, trans_decl' d),
+axs.mmap' (λ n, do
+  d ← state_t.lift $ get_decl n,
+  trans_decl' d
+  -- mwhen (state_t.lift $ is_instance n) (do
+  --   eqns ← state_t.lift $ super.mk_inst_equations n,
+  --   eqns.mmap' $ λ eqn, do
+  --     ty ← state_t.lift $ infer_type eqn,
+  --     trans_decl n eqn ty)
+      ),
 lctx ← state_t.lift tactic.local_context,
 lctx.mmap' (λ l, do
   n ← get_var_name l,
@@ -521,7 +529,7 @@ meta def run_vampire (tptp : string) : tactic string :=
 timetac "vampire took" $
 exec_cmd "vampire" ["-p", "tptp"] tptp
 
-meta def filter_lemmas (axs : list name) : tactic (list expr) := do
+meta def filter_lemmas (axs : list name) : tactic (list (expr × name)) := do
 (tptp, ax_names) ← do_trans axs,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
@@ -530,9 +538,9 @@ tptp_out ← timetac "vampire took" $ exec_cmd "bash" ["-c",
     "grep -oP '(?<=file\\(unknown,).*?(?=\\))'"]
   tptp.to_string,
 let ns := tptp_out.split_on '\n',
-pure $ do n ← ns, ((ax_names.find n).to_list).map prod.fst
+pure $ do n ← ns, (ax_names.find n).to_list
 
-meta def find_lemmas (max := 10) : tactic (list expr) := do
+meta def find_lemmas (max := 10) : tactic (list (expr × name)) := do
 rgoal ← reverted_target,
 axs ← timetac "Premise selection took" $ select_for_goal rgoal,
 let axs := (axs.take max).map (λ a, a.1),
@@ -571,7 +579,8 @@ namespace interactive
 
 open interactive interactive.types lean.parser hammer.fotr2
 
-private meta def find_lemmas4_core (axs : option (list name)) (max_lemmas : ℕ) : tactic (list expr) := do
+private meta def find_lemmas4_core (axs : option (list name)) (max_lemmas : ℕ) :
+  tactic (list (expr × name)) := do
 lems ←
   match axs with
   | none := hammer.fotr2.find_lemmas max_lemmas
@@ -582,10 +591,10 @@ lems ←
   end,
 trace "\nTry:",
 trace $ to_fmt "by super " ++ (to_fmt $ lems.map $ λ lem,
-  match lem.get_app_fn with
-  | (expr.const n _) := n
-  | (expr.local_const _ n _ _) := n
-  | _ := default name
+  match lem.1.get_app_fn, lem.2 with
+  | (expr.local_const _ n _ _), _ := n
+  | _, n := n
+  -- | _ := default name
   end).group,
 pure lems
 
@@ -596,10 +605,17 @@ admit
 meta def hammer4 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do
 lems ← find_lemmas4_core axs max_lemmas,
 tactic.intros,
-hammer.fotr2.reconstruct lems
+hammer.fotr2.reconstruct (lems.map prod.fst)
 
 end interactive
 end tactic
 
--- set_option profiler true
--- example (x y : ℕ) : x ≤ max x (y) := by hammer4
+set_option profiler true
+set_option trace.super true
+-- example (x y : ℕ) : x ≤ max x (y) :=
+-- --  by hammer4 [le_max_iff, le_refl, le_trans]
+-- by hammer4
+-- -- by super [x,
+-- --  le_refl,
+-- --  y,
+-- --  le_max_iff]

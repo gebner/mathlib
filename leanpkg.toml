@@ -5,4 +5,4 @@ lean_version = "3.5c"
 path = "src"
 
 [dependencies]
-super2 = {git = "https://github.com/gebner/super2", rev = "a41a5a59471dbac5645f503f05f5d6659c327e70"}
+super2 = {git = "https://github.com/gebner/super2", rev = "2b72f1f655e5ce5c29605b8cb336d7ee78b39ef4"}
