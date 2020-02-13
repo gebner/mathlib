@@ -140,7 +140,7 @@ focus1 $ super.with_ground_mvars $ do
 lems ← lems.mmap super.clause.of_proof,
 super.solve_with_goal {} lems
 
-meta def my_timetac (desc : string) (tac : string → tactic unit) (time_limit := 100000) : tactic unit :=
+meta def my_timetac (desc : string) (tac : string → tactic unit) (time_limit := 500000) : tactic unit :=
 timetac ("TOTAL " ++ desc) $ do
 trace $ "START " ++ desc,
 s ← read,
