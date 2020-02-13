@@ -340,8 +340,9 @@ meta def filter_lemmas3 (axs : list name) : tactic (list (expr × hol_tm)) := do
 filter_lemmas3_core tptp ax_names
 
 meta def find_lemmas3 (max := 10) : tactic (list (expr × hol_tm)) := do
+env ← get_env,
 axs ← timetac "Premise selection took" $ retrieve $
-  revert_all >> target >>= select_for_goal,
+  select_for_goal env <$> (revert_all >> target),
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,

@@ -25,7 +25,8 @@ done
 
 meta def eval_hammer1 (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← reverted_target,
-axs ← timetac ("SELECT " ++ desc) $ retrieve $ select_for_goal goal,
+env ← get_env,
+axs ← timetac ("SELECT " ++ desc) $ pure $ select_for_goal env goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -45,8 +46,9 @@ tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct1 lems
 
 meta def eval_hammer2 (max_lemmas : ℕ) (desc : string) : tactic unit := do
+env ← get_env,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  revert_all >> target >>= select_for_goal,
+  select_for_goal env <$> (revert_all >> target),
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -65,8 +67,9 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct2 lems
 
 meta def eval_hammer3 (max_lemmas : ℕ) (desc : string) : tactic unit := do
+env ← get_env,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  revert_all >> target >>= select_for_goal,
+  select_for_goal env <$> (revert_all >> target),
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -85,8 +88,9 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 timetac ("RECONSTRUCT " ++ desc) $ hammer.reconstruct3 lems
 
 meta def eval_hammer4 (max_lemmas : ℕ) (desc : string) : tactic unit := do
+env ← get_env,
 axs ← timetac ("SELECT " ++ desc) $ retrieve $
-  reverted_target >>= select_for_goal,
+  select_for_goal env <$> reverted_target,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
@@ -106,7 +110,8 @@ timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct (lems.map prod.fst)
 
 meta def eval_super (max_lemmas : ℕ) (desc : string) : tactic unit := do
 goal ← retrieve (revert_all >> target),
-axs ← timetac ("SELECT " ++ desc) $ retrieve $ select_for_goal goal,
+env ← get_env,
+axs ← timetac ("SELECT " ++ desc) $ pure $ select_for_goal env goal,
 let axs := (axs.take max_lemmas).map (λ a, a.1),
 trace axs,
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,

@@ -542,7 +542,8 @@ pure $ do n ← ns, (ax_names.find n).to_list
 
 meta def find_lemmas (max := 10) : tactic (list (expr × name)) := do
 rgoal ← reverted_target,
-axs ← timetac "Premise selection took" $ select_for_goal rgoal,
+env ← get_env,
+axs ← timetac "Premise selection took" $ pure $ select_for_goal env rgoal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,

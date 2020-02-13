@@ -363,7 +363,8 @@ let ns := tptp_out.split_on '\n',
 pure $ do n ← ns, (ax_names.find n).to_list
 
 meta def find_lemmas1 (goal : expr) (max := 10) : tactic (list name) := do
-axs ← timetac "Premise selection took" $ select_for_goal goal,
+env ← get_env,
+axs ← timetac "Premise selection took" $ pure $ select_for_goal env goal,
 let axs := (axs.take max).map (λ a, a.1),
 -- trace "Premise selection:",
 trace axs,

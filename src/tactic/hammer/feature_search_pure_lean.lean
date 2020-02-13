@@ -144,7 +144,7 @@ meta def features_of_decl (n : name) : tactic feature_vec := do
 il ← mk_ignore_args,
 features_of_decl' il <$> get_decl n
 
-#eval features_of_decl ``add_comm >>= trace
+-- #eval features_of_decl ``add_comm >>= trace
 
 @[inline]
 meta def hist {α} [has_lt α] [decidable_rel ((<) : α → α → Prop)] (l : list α) : rb_map α nat :=
