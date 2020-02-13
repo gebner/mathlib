@@ -41,6 +41,10 @@ let ws := ws.filter $ λ x, x.2 > 0 in
 let ws := ws.merge_sort $ λ a b, a.2 > b.2 in
 ws
 
+meta def select_for_goal' (g : expr) (cfg : feature_cfg := {}) : tactic (list (name × float)) := do
+env ← get_env,
+pure $ select_for_goal env g cfg
+
 end hammer
 
 namespace tactic

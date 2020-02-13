@@ -1,6 +1,5 @@
 import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates
 tactic.hammer.fol
-tactic.hammer.fo_translation
 super
 
 open tactic expr native
@@ -34,6 +33,7 @@ is_class
 meta structure compute_arg_modes_cfg :=
 (drop_inst_args := tt)
 (drop_dep_args := tt)
+(drop_subsingleton := tt)
 (param_all_args := ff)
 (param_all_cls_args := tt)
 
@@ -43,7 +43,7 @@ meta def compute_arg_modes_core (cfg : compute_arg_modes_cfg) : expr → tactic 
   modes ← compute_arg_modes_core (body.instantiate_var l),
   irrelevant ← succeeds (mk_mapp ``subsingleton [ty] >>= mk_instance),
   is_tc ← is_coherent_tc ty,
-  if irrelevant ∨ (cfg.drop_inst_args ∧ is_tc) then
+  if (cfg.drop_subsingleton ∧ irrelevant) ∨ (cfg.drop_inst_args ∧ is_tc) then
     pure $ arg_mode.dropped :: modes
   else if cfg.drop_dep_args ∧ occurs_in_non_dropped body modes then
     pure $ arg_mode.dropped :: modes
@@ -73,6 +73,7 @@ meta structure trans_out :=
 @[derive [has_to_string, has_repr, has_to_tactic_format, has_to_format]]
 meta structure trans_state :=
 (fresh_idx : ℕ := 0)
+(cam_cfg : compute_arg_modes_cfg := {})
 (modes : name_map (list arg_mode) := mk_name_map)
 (var_names : name_map name := mk_name_map)
 (abbrs : rb_map expr expr := mk_rb_map)
@@ -84,7 +85,7 @@ meta def trans := state_t trans_state tactic
 meta def trans.decl_out (n : name) (prf : expr) (f : fo_fml) : trans unit :=
 state_t.modify $ λ s, { out := ⟨n, f, prf⟩ :: s.out, ..s }
 
-meta def get_arg_modes_for_head (e : expr) (cfg : compute_arg_modes_cfg := {}) :
+meta def get_arg_modes_for_head_core (e : expr) (cfg : compute_arg_modes_cfg) :
   trans (list arg_mode) := do
 let h := e.get_app_fn,
 let n := match h with
@@ -106,6 +107,10 @@ match s.modes.find n with
   state_t.put { modes := s.modes.insert n ms, ..s },
   pure ms
 end
+
+meta def get_arg_modes_for_head (e : expr) : trans (list arg_mode) := do
+cfg ← trans_state.cam_cfg <$> get,
+get_arg_modes_for_head_core e cfg
 
 meta def fresh_num : trans ℕ := do
 state_t.modify (λ s, { fresh_idx := s.fresh_idx + 1, ..s }),
@@ -148,8 +153,15 @@ meta def apply_modes {α} : list arg_mode → list α → list α × list α
 
 meta def fo_app (a b : fo_term) := fo_term.fn `_A [a, b]
 
-meta def is_effective_prop (e : expr) : trans bool :=
-state_t.lift $ bor <$> is_prop e <*> is_coherent_tc e
+meta def drop_inst_args : trans bool :=
+(λ s : trans_state, s.cam_cfg.drop_inst_args) <$> get
+
+meta def is_effective_prop (e : expr) : trans bool := do
+dia ← drop_inst_args,
+state_t.lift $ if ¬ dia then
+  is_prop e
+else
+  bor <$> is_prop e <*> is_coherent_tc e
 
 meta def eta_expand : expr → ℕ → tactic expr
 | e 0 := pure e
@@ -234,7 +246,8 @@ match hd with
   | (lam _ _ _ _) := do
     let (f, capts) := extract_from_lctx lctx hd,
     (f', is_new) ← abbr f `_lambda,
-    get_arg_modes_for_head f' {param_all_args := ff},
+    cam_cfg ← trans_state.cam_cfg <$> get,
+    get_arg_modes_for_head_core f' {param_all_args := ff, ..cam_cfg},
     when is_new (do
       f_ty ← state_t.lift $ infer_type f,
       n ← get_var_name f',
@@ -260,7 +273,7 @@ match hd with
 end
 with trans_type : list expr → expr → expr → trans fo_fml | lctx e t := do
 t_is_prop ← state_t.lift $ is_prop t,
-t_is_tc ← state_t.lift $ is_coherent_tc t,
+t_is_tc ← mcond drop_inst_args (state_t.lift $ is_coherent_tc t) (pure ff),
 if t_is_tc then do
   trans_fml lctx t
 else if t_is_prop then do
@@ -611,8 +624,8 @@ hammer.fotr2.reconstruct (lems.map prod.fst)
 end interactive
 end tactic
 
-set_option profiler true
-set_option trace.super true
+-- set_option profiler true
+-- set_option trace.super true
 -- example (x y : ℕ) : x ≤ max x (y) :=
 -- --  by hammer4 [le_max_iff, le_refl, le_trans]
 -- by hammer4
