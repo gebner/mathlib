@@ -100,6 +100,32 @@ trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
 tactic.intros,
 timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct (lems.map prod.fst)
 
+meta def eval_hammer4_predict (max_lemmas : ℕ) (desc : string)
+  (cfg : feature_search.predictor_cfg) : tactic unit := do
+rtgt ← reverted_target,
+axs ← timetac ("SELECT " ++ desc) $
+  predict' rtgt max_lemmas cfg,
+trace axs,
+let axs := axs.map (λ a, a.1),
+trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
+lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
+trace lems,
+trace $ "NUM_PROVER_LEMMAS " ++ desc ++ " " ++ to_string lems.length,
+tactic.intros,
+timetac ("RECONSTRUCT " ++ desc) $ fotr2.reconstruct (lems.map prod.fst)
+
+meta def eval_hammer4b (max_lemmas : ℕ) (desc : string) : tactic unit :=
+eval_hammer4_predict max_lemmas desc {}
+
+meta def eval_hammer4c (max_lemmas : ℕ) (desc : string) : tactic unit :=
+eval_hammer4_predict max_lemmas desc {
+  ignore_tc := ff,
+  ignore_pi_domain := ff,
+  ignore_type_args := ff,
+  ignore_decidable := tt,
+  ignore_conns := tt,
+}
+
 meta def eval_hammer4_oracle (axs : list name) (desc : string) : tactic unit := do
 trace $ "NUM_LEMMAS " ++ desc ++ " " ++ to_string axs.length,
 lems ← timetac ("PROVER " ++ desc) $ fotr2.filter_lemmas axs,
@@ -182,6 +208,10 @@ my_timetac (to_string n ++ " hammer3 100") (eval_hammer3 100),
 my_timetac (to_string n ++ " hammer3 oracle") (eval_hammer3_oracle cs),
 my_timetac (to_string n ++ " hammer4 10") (eval_hammer4 10),
 my_timetac (to_string n ++ " hammer4 100") (eval_hammer4 100),
+my_timetac (to_string n ++ " hammer4b 10") (eval_hammer4b 10),
+my_timetac (to_string n ++ " hammer4b 100") (eval_hammer4b 100),
+my_timetac (to_string n ++ " hammer4c 10") (eval_hammer4c 10),
+my_timetac (to_string n ++ " hammer4c 100") (eval_hammer4c 100),
 my_timetac (to_string n ++ " hammer4 oracle") (eval_hammer4_oracle cs),
 skip
 

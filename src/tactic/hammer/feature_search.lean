@@ -45,6 +45,13 @@ meta def select_for_goal' (g : expr) (cfg : feature_cfg := {}) : tactic (list (n
 env ← get_env,
 pure $ select_for_goal env g cfg
 
+meta def predict (e : environment) (g : expr) (max : ℕ) (cfg : predictor_cfg := {}) : list (name × float) :=
+(e.mk_predictor cfg).predict (feature_vec.of_expr e g) max
+
+meta def predict' (g : expr) (max : ℕ) (cfg : predictor_cfg := {}) : tactic (list (name × float)) := do
+env ← get_env,
+pure $ predict env g max cfg
+
 end hammer
 
 namespace tactic

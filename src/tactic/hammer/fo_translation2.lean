@@ -440,11 +440,14 @@ meta def inst_implicit_dom_heads : expr → list name
 | (pi _ _ _ c) := inst_implicit_dom_heads c
 | _ := []
 
+private meta def decidable_classes : name_set :=
+name_set.of_list [``decidable, ``decidable_rel, ``decidable_pred, ``decidable_eq]
+
 meta def close_under_instances_core (all_cs : name_map (list name)) :
   list name → name_set → name_set → tactic name_set
 | [] done cnsts := pure cnsts
 | (c::cs) done cnsts :=
-  if done.contains c then
+  if done.contains c ∨ decidable_classes.contains c then
     close_under_instances_core cs done cnsts
   else do
     let done := done.insert c,
