@@ -1,16 +1,20 @@
-import tactic.core
+import tactic.core tactic.lint
 
 universes u
 
+/-- Generalization of `is_associative` to `Sort u`. -/
 class is_associative' {α : Sort u} (op : α → α → α) :=
 (assoc : ∀ a b c, op (op a b) c = op a (op b c))
 
+@[priority 900]
 instance is_associative'.of_is_associative {α} (op) [is_associative α op] : is_associative' op :=
 ⟨is_associative.assoc _⟩
 
+/-- Generalization of `is_commutative` to `Sort u`. -/
 class is_commutative' {α : Sort u} (op : α → α → α) :=
 (comm : ∀ a b, op a b = op b a)
 
+@[priority 900]
 instance is_commutative'.of_is_commutative {α} (op) [is_commutative α op] : is_commutative' op :=
 ⟨is_commutative.comm _⟩
 
@@ -25,6 +29,7 @@ def set_builder (α : Type) := list α → list α
 namespace set_builder
 
 instance {α} : has_emptyc (set_builder α) := ⟨id⟩
+instance {α} : inhabited (set_builder α) := ⟨∅⟩
 
 instance {α} [decidable_eq α] : has_insert α (set_builder α) :=
 ⟨λ x b s, if x ∈ s then s else x :: s⟩

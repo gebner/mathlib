@@ -106,7 +106,7 @@ let lems := sls.find n,
 res ← (try_core $ first $ do l ← lems, pure $ acsimp_rwr_lem lhs l [lam `x binder_info.default t (var 0)]),
 pure $ match res with some (rhs, prf) := (rhs, some prf) | none := (lhs, none) end
 
-meta def acsimp_ac_rwr (op : expr) (is_assoc : expr) (lhs : expr) : tactic (expr × option expr) :=
+meta def acsimp_ac_rwr (op : expr) (lhs : expr) : tactic (expr × option expr) :=
 do t ← infer_type lhs,
 is_comm ← is_comm_op op,
 let n := head_sym lhs,
@@ -159,7 +159,7 @@ match is_assoc with
 | some (op, is_assoc) := do
   -- trace (con `ac_congr [] op t),
   (t1, prf0) ← acsimp_ac_congr acsimp op t,
-  (t2, prf1) ← acsimp_ac_rwr sls op is_assoc t1,
+  (t2, prf1) ← acsimp_ac_rwr sls op t1,
   if prf0.is_none ∧ prf1.is_none then
     pure (t, none)
   else do
@@ -297,6 +297,7 @@ private meta def simp_lemmas.append_pexprs : acsimp.simp_lemmas → list name �
 | s u []      := return (s, u)
 | s u (l::ls) := do (s, u) ← simp_lemmas.add_pexpr s u l, simp_lemmas.append_pexprs s u ls
 
+@[nolint unused_arguments]
 meta def join_user_acsimp_lemmas (no_dflt : bool) (attrs : list name) : tactic acsimp.simp_lemmas := do
 sls ← if no_dflt then pure acsimp.simp_lemmas.empty
       else acsimp.simp_lemmas.mk_default acsimp.simp_lemmas.empty,
@@ -324,6 +325,7 @@ prod.snd <$> (mk_acsimp_set_core no_dflt attr_names hs ff)
 namespace interactive
 open interactive interactive.types expr
 
+@[nolint unused_arguments]
 meta def acsimp_target (s : acsimp.simp_lemmas) (to_unfold : list name := []) (cfg : simp_config := {}) (discharger : tactic unit := failed) : tactic bool := do
 t ← target >>= instantiate_mvars,
 (new_t, pr) ← acsimp.acsimp_core s t,
