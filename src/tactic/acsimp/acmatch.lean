@@ -15,8 +15,9 @@ instance is_commutative'.of_is_commutative {α} (op) [is_commutative α op] : is
 ⟨is_commutative.comm _⟩
 
 instance and.is_associative' : is_associative' (∧) := ⟨by intros a b c; rw and_assoc⟩
-instance or.is_associative' : is_associative' (∨) := ⟨by intros a b c; rw or_assoc⟩
 instance and.is_commutative' : is_commutative' (∧) := ⟨by intros a b; rw and_comm⟩
+
+instance or.is_associative' : is_associative' (∨) := ⟨by intros a b c; rw or_assoc⟩
 instance or.is_commutative' : is_commutative' (∨) := ⟨by intros a b; rw or_comm⟩
 
 def set_builder (α : Type) := list α → list α
@@ -101,16 +102,19 @@ try_core $ mk_mapp ``is_commutative'.comm [none, op, none]
 
 meta def try_reassoc_left : expr → expr → tactic (option expr)
 | lhs@(app (app f (app (app f' a) b)) c) rhs := do
-  is_def_eq f f',
+  guard $ f.get_app_fn.const_name = f'.get_app_fn.const_name,
+  -- trace (con ``try_reassoc_left [] a b c),
+  unify f f' transparency.reducible,
   (op, is_assoc) ← is_assoc_app lhs,
   commit_to_this_branch $ do
   prf ← acmatch (f a (f b c)) rhs,
   mk_eq_trans (is_assoc a b c) prf
-| _ _ := fail "try_reassoc_left"
+| lhs _ := fail "try_reassoc_left"
 
 meta def try_accongr : expr → expr → tactic (option expr)
 | lhs@(app (app f a) b) rhs@(app (app f' c) d) := do
   is_def_eq f f',
+  -- trace (con ``try_accongr [] a b c d),
   (op, is_assoc) ← is_assoc_app lhs,
   is_comm ← is_comm_op op,
   commit_to_this_branch $
@@ -140,7 +144,7 @@ aprf ← acmatch al ar,
 to_expr ``(_root_.congr %%fprf %%aprf)
 
 meta def unify_op : expr → expr → tactic unit
-| (app (app f _) _) (app (app g _) _) := unify f g
+| (app (app f _) _) (app (app g _) _) := unify f g transparency.reducible
 | _ _ := failure
 
 meta def acmatch_core (lhs rhs : expr) : tactic expr := do
@@ -157,6 +161,7 @@ end
 
 meta def acmatch : expr → expr → tactic expr | lhs rhs := do
 -- trace (con `acmatch [] lhs rhs),
-acmatch_core acmatch lhs rhs --<|> (trace ((const `acmatch_failed [] : expr) lhs rhs) >> failure)
+acmatch_core acmatch lhs rhs
+  -- <|> (trace ((const `acmatch_failed [] : expr) lhs rhs) >> failure)
 
 end acsimp

@@ -5,7 +5,7 @@ open tactic expr native
 namespace acsimp
 
 meta def simp_lemmas :=
-rb_map name (list expr)
+rb_lmap name expr
 
 namespace simp_lemmas
 
@@ -21,6 +21,10 @@ meta def or_refl (t : expr) : option expr → tactic expr
 section
 variables (acsimp : expr → tactic (expr × option expr)) (sls : simp_lemmas)
 
+/--
+Given a term `op (op .. ..) (op .. ...)` applies `acsimp` at all the leaves.
+Returns the simplified term, as well as a proof.
+-/
 meta def acsimp_ac_congr (op : expr) : expr → tactic (expr × option expr)
 | lhs@(app (app op' a) b) := do
   is_eq ← option.is_some <$> (try_core $ is_def_eq op op'),
@@ -59,7 +63,6 @@ meta def acsimp_rwr_lem_core (t : expr) (ctxs : list expr) : expr → expr → t
   first $ do ctx ← ctxs, pure $ do
   let lhs := ctx.subst lhs,
   let rhs := ctx.subst rhs,
-  t_eq_lhs_rhs ← infer_type eq_lhs_rhs,
   eq_lhs_rhs ← mk_congr_arg ctx eq_lhs_rhs,
   eq_lhs_t ← acmatch lhs t,
   eq_t_lhs ← mk_eq_symm eq_lhs_t,
@@ -90,28 +93,24 @@ meta def acsimp_keys : expr → set_builder name
 meta def acsimp_rwr_lem (t : expr) (prf_lem : expr) (ctxs : list expr) : tactic (expr × expr) :=
 retrieve $ do
 lem ← infer_type prf_lem >>= instantiate_mvars,
--- trace (con ``acsimp_rwr_lem [] prf_lem t lem),
 (t', eq_t_t') ← acsimp_rwr_lem_core t ctxs prf_lem lem,
 eq_t_t' ← instantiate_mvars eq_t_t',
 t' ← instantiate_mvars t',
-trace (con `rwr_lem [] prf_lem t t'),
+-- trace (con `rwr_lem [] prf_lem t t'),
 pure (t', eq_t_t')
 
 meta def acsimp_rwr (lhs : expr) : tactic (expr × option expr) :=
 do t ← infer_type lhs,
 let n := head_sym lhs,
-let lems := (sls.find n).get_or_else [],
+let lems := sls.find n,
 res ← (try_core $ first $ do l ← lems, pure $ acsimp_rwr_lem lhs l [lam `x binder_info.default t (var 0)]),
 pure $ match res with some (rhs, prf) := (rhs, some prf) | none := (lhs, none) end
-
-lemma and_not_self_eq {a} : (¬ a ∧ a) = false := by rw [and_comm, and_not_self]
-lemma and_not_self_eq' {a b} : (¬ a ∧ a ∧ b) = (false ∧ b) := by rw [← and_assoc, and_not_self_eq]
 
 meta def acsimp_ac_rwr (op : expr) (is_assoc : expr) (lhs : expr) : tactic (expr × option expr) :=
 do t ← infer_type lhs,
 is_comm ← is_comm_op op,
 let n := head_sym lhs,
-let lems := (sls.find n).get_or_else [],
+let lems := sls.find n,
 res ← (try_core $ first $ do l ← lems,
   pure $ do
     m ← mk_meta_var t,
@@ -158,6 +157,7 @@ meta def acsimp_core_core (t : expr) : tactic (expr × option expr) := do
 is_assoc ← try_core $ is_assoc_app t,
 match is_assoc with
 | some (op, is_assoc) := do
+  -- trace (con `ac_congr [] op t),
   (t1, prf0) ← acsimp_ac_congr acsimp op t,
   (t2, prf1) ← acsimp_ac_rwr sls op is_assoc t1,
   if prf0.is_none ∧ prf1.is_none then
@@ -206,7 +206,7 @@ meta def empty : simp_lemmas := mk_rb_map
 meta def add (sls : simp_lemmas) (e : expr) : tactic simp_lemmas := do
 ty ← infer_type e,
 pure $ (acsimp_keys ty).to_list.foldr
-  (λ k sls, sls.insert k (e :: (sls.find k).get_or_else []))
+  (λ k sls, sls.insert k e)
   sls
 
 meta def add_list (sls : simp_lemmas) (e : list expr) : tactic simp_lemmas :=

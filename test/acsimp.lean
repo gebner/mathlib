@@ -18,40 +18,32 @@ triv
 #eval acsimp.simp_lemmas.mk_default simp_lemmas.empty >>= trace
 
 #eval do
-l ← mk_const ``and_not_self_eq,
+l ← mk_const ``and_not_self,
 let sls := rb_map.of_list [(``and, [l])],
 lhs ← to_expr ``(foo ∧ bar ∧ ¬ foo),
 acsimp_core sls lhs >>= trace
 
-lemma and_not_self' {a} : (¬ a ∧ a) = false := by rw [and_comm, and_not_self]
-
-#check false_and
-
--- set_option trace.simplify.rewrite true
 -- set_option profiler true
+
 example (a b : Prop) : (a ∧ b ∧ ¬ a) = false :=
-by acsimp only [and_not_self', false_and]
+by acsimp only [and_not_self, false_and]
 
-#check sub_add
+example (a b : Prop) : ((a ∨ ¬ b) ∨ (b ∨ ¬ a)) = true :=
+by acsimp only [classical.em, true_or]
 
-#check add_sub_cancel
-
+example (a b c : ℤ) : a + b + (-a) + b = b + b :=
+by acsimp only [neg_add_self, zero_add]
 
 example (a b c : ℤ) : (a + b) * (a - b) = a*a - b*b :=
 by acsimp only [right_distrib,
-  neg_add_self, neg_add_cancel_left, -- TODO: automatically turn add_neg_self into neg_add_cancel_left
+  neg_add_self, zero_add,
   eq_self_iff_true, sub_eq_add_neg,
   (neg_mul_eq_mul_neg _ _).symm]
-
-#print ""
-
-lemma mul_inv_eq' {α} [division_ring α] {x y : α} (h : x ≠ 0) :
-  x⁻¹ * x * y = y :=
-by rw [inv_mul_cancel h, one_mul]
 
 example (a b : ℚ) (h : a ≠ 0) (c : ℚ) (h2 : b * b = c) :
   b * a * b * a⁻¹ = c :=
 begin
-  acsimp only [mul_inv_eq' h],
+  acsimp only [mul_inv_cancel h, one_mul],
+  guard_target b * b = c,
   exact h2
 end
