@@ -237,6 +237,10 @@ else do
 
 run_cmd add_interactive [``acrefl]
 
+/--
+`acexact t` uses the exact proof term `t` to solve the main goal.
+The type of `t` and the goal will be unified using AC-matching.
+-/
 meta def acexact (e : expr) : tactic unit := do
 tgt ← target,
 ty ← infer_type e,
