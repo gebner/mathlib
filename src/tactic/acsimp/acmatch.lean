@@ -237,4 +237,23 @@ else do
 
 run_cmd add_interactive [``acrefl]
 
+meta def acexact (e : expr) : tactic unit := do
+tgt ← target,
+ty ← infer_type e,
+ty_eq_tgt ← acmatch ty tgt,
+mk_eq_mp ty_eq_tgt e >>= exact
+
 end acsimp
+
+namespace tactic.interactive
+setup_tactic_parser
+open tactic
+
+/--
+`acexact t` uses the exact proof term `t` to solve the main goal.
+The type of `t` and the goal will be unified using AC-matching.
+-/
+meta def acexact (q : parse texpr) : tactic unit :=
+i_to_expr_strict q >>= acsimp.acexact
+
+end tactic.interactive
