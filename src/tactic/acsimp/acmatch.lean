@@ -44,7 +44,7 @@ instance [decidable_eq α] : has_insert α (set_builder α) :=
 
 instance : has_union (set_builder α) := ⟨(∘)⟩
 
-/-- Converts a `set_builder` to a list. -/
+/-- Converts a `set_builder` to a `list`. -/
 def to_list (b : set_builder α) : list α := b []
 
 end set_builder
@@ -52,13 +52,6 @@ end set_builder
 namespace acsimp
 
 open tactic expr
-
-/--
-A variant of `expr.const` without an optional argument for the elaboratedness.
-This allows you to write `con ``iff [] lhs rhs`.
--/
-meta def con (n : name) (l : list level := []) : expr :=
-const n l
 
 /-- Auxiliary definition to be used with `orelse_option`. -/
 meta def commit_to_this_branch := @try_core
@@ -86,7 +79,11 @@ by intros; cc
 section
 variables (acmatch : expr → expr → tactic expr)
 
-meta def accongr (op is_assoc : expr) (is_comm : option expr) :
+/--
+`accongr op is_assoc is_comm lhs rhs lhs' rhs'` produces a proof of `op lhs lhs' = op rhs rhs'`,
+using restricted AC-matching.  Assumes that `lhs` is not an `op`-application.
+-/
+private meta def accongr (op is_assoc : expr) (is_comm : option expr) :
   ∀ lhs rhs lhs' rhs' : expr, tactic expr | lhs rhs lhs' rhs' :=
 do
 --  trace (con ``accongr [] op is_assoc lhs rhs lhs' rhs'),
@@ -108,24 +105,41 @@ do
     prf' ← acmatch lhs' rhs',
     mk_mapp ``congr_arg2 [none, op, none, none, none, none, prf, prf'])
 
-meta def try_subsingleton (lhs rhs : expr) : tactic expr :=
+/--
+`try_subsingleton lhs rhs` produces a proof of `lhs = rhs`.
+Fails if the type of `lhs` is not a subsingleton.
+-/
+private meta def try_subsingleton (lhs rhs : expr) : tactic expr :=
 mk_app ``subsingleton.elim [lhs, rhs]
 
--- #eval try_subsingleton `(()) `(()) >>= infer_type >>= trace
-
-meta def try_rfl (lhs rhs : expr) : tactic expr :=
+/--
+`try_rfl lhs rhs` produces a proof of `lhs = rhs`.
+Fails if `lhs` and `rhs` are not definitionally equal.
+-/
+private meta def try_rfl (lhs rhs : expr) : tactic expr :=
 is_def_eq lhs rhs >> mk_eq_refl rhs
 
+/--
+`is_assoc_app t` determines if `t` is of the form `op a b` where `op` is associative.
+If successful, it returns the pair `(op, prf_assoc)` where `prf_assoc` is
+the proof of associativity.
+-/
 meta def is_assoc_app : expr → tactic (expr × expr)
 | (app (app f a) b) := do
   prf ← mk_mapp ``is_associative'.assoc [none, f, none],
   pure (f, prf)
 | _ := fail "is_assoc_app"
 
+/-- `is_comm_op op` returns `some prf_comm` if `op` is commutative, and `none` otherwise. -/
 meta def is_comm_op (op : expr) : tactic (option expr) :=
 try_core $ mk_mapp ``is_commutative'.comm [none, op, none]
 
-meta def try_reassoc_left : expr → expr → tactic (option expr)
+/--
+`try_reassoc_left lhs@(op (op a b) c) rhs` produces a proof of `lhs = rhs`
+by recursively calling `acmatch (op a (op b c)) rhs`.
+Returns `none` if the recursive calls fails, and fails if `lhs` is not of the required form.
+-/
+private meta def try_reassoc_left : expr → expr → tactic (option expr)
 | lhs@(app (app f (app (app f' a) b)) c) rhs := do
   guard $ f.get_app_fn.const_name = f'.get_app_fn.const_name,
   -- trace (con ``try_reassoc_left [] a b c),
@@ -136,7 +150,10 @@ meta def try_reassoc_left : expr → expr → tactic (option expr)
   mk_eq_trans (is_assoc a b c) prf
 | lhs _ := fail "try_reassoc_left"
 
-meta def try_accongr : expr → expr → tactic (option expr)
+/--
+`try_accongr lhs rhs` produces a proof of `lhs = rhs`
+-/
+private meta def try_accongr : expr → expr → tactic (option expr)
 | lhs@(app (app f a) b) rhs@(app (app f' c) d) := do
   is_def_eq f f',
   -- trace (con ``try_accongr [] a b c d),
@@ -151,14 +168,21 @@ meta def try_accongr : expr → expr → tactic (option expr)
   -- wanted : a + b = c + d
 | _ _ := fail "try_accongr"
 
-meta def try_assign : expr → expr → tactic expr
+/--
+`try_assign lhs rhs` produces a proof of `lhs = rhs` by assigning `lhs` if `lhs` is a metavariable.
+-/
+private meta def try_assign : expr → expr → tactic expr
 | lhs@(mvar _ _ _) rhs := do
   -- trace (con ``try_assign [] lhs rhs),
   unify lhs rhs,
   mk_eq_refl rhs
 | _ _ := fail "try_assign"
 
-meta def try_congr (lhs rhs : expr) : tactic expr := do
+/--
+`try_congr lhs rhs` produces a proof of `lhs = rhs` by applying
+congruence for non-associative functions.
+-/
+private meta def try_congr (lhs rhs : expr) : tactic expr := do
 app fl al ← pure lhs,
 app fr ar ← pure rhs,
 tfl ← infer_type fl,
@@ -168,11 +192,15 @@ fprf ← acmatch fl fr,
 aprf ← acmatch al ar,
 to_expr ``(_root_.congr %%fprf %%aprf)
 
-meta def unify_op : expr → expr → tactic unit
+/-- Unifies the function symbols of binary function applications. -/
+private meta def unify_op : expr → expr → tactic unit
 | (app (app f _) _) (app (app g _) _) := unify f g transparency.reducible
 | _ _ := failure
 
-meta def acmatch_core (lhs rhs : expr) : tactic expr := do
+/--
+`acmatch_core lhs rhs` produces a proof of `lhs = rhs`.
+-/
+private meta def acmatch_core (lhs rhs : expr) : tactic expr := do
 lhs ← instantiate_mvars lhs,
 try (unify_op lhs rhs),
 try_assign lhs rhs <|>
@@ -184,6 +212,9 @@ try_congr acmatch lhs rhs
 
 end
 
+/--
+`acmatch lhs rhs` produces a proof of `lhs = rhs` using AC-matching.
+-/
 meta def acmatch : expr → expr → tactic expr | lhs rhs := do
 -- trace (con `acmatch [] lhs rhs),
 acmatch_core acmatch lhs rhs

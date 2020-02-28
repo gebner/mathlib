@@ -457,6 +457,13 @@ meta def to_binder : expr → binder
 | (local_const _ nm bi t) := ⟨nm, bi, t⟩
 | _                       := default binder
 
+/--
+A variant of `expr.const` without an optional argument for the elaboratedness.
+This allows you to write `con ``iff [] lhs rhs`.
+-/
+meta def con (n : name) (l : list level := []) : expr :=
+const n l
+
 end expr
 
 /-! ### Declarations about `environment` -/

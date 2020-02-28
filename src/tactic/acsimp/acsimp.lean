@@ -4,6 +4,29 @@ open tactic expr native
 
 namespace acsimp
 
+/--
+Computes the head symbol of a term.  E.g., ``head_sym `(1 + 2) = `has_add.add``.
+-/
+meta def head_sym (e : expr) : name := e.get_app_fn.const_name
+
+/--
+`acsimp_keys ty` computes the head symbols of all left-hand sides of the simp
+lemma with type `ty`.
+-/
+meta def acsimp_keys : expr → set_builder name
+| (pi n bi t lem) := acsimp_keys lem
+| `(%%lhs = %%rhs) := {head_sym lhs}
+| `(%%lhs ↔ %%rhs) := {head_sym lhs}
+| `(%%a ∧ %%b) := acsimp_keys a ∪ acsimp_keys b
+| `(¬ %%a) := {head_sym a}
+| lem := {head_sym lem}
+
+/--
+Data structure containing the simplification lemmas for the AC simplifier.
+
+The simp lemmas are stored as an `rb_lmap` where each simp lemma is indexed
+by the head symbol of the left-hand side(s).
+-/
 meta def simp_lemmas :=
 rb_lmap name expr
 
@@ -11,6 +34,71 @@ namespace simp_lemmas
 
 meta instance : has_to_tactic_format simp_lemmas :=
 show _root_.has_to_tactic_format (rb_map _ _), by apply_instance
+
+/-- The empty simp set. -/
+meta def empty : simp_lemmas := mk_rb_map
+
+/--
+`sls.add prf` adds a simplification lemma to the simp set.
+
+The proof `prf` may contain metavariables. These will be assigned during
+matching (inside a `tactic.retrieve`).
+-/
+meta def add (sls : simp_lemmas) (prf : expr) : tactic simp_lemmas := do
+ty ← infer_type prf,
+pure $ (acsimp_keys ty).to_list.foldr
+  (λ k sls, sls.insert k prf)
+  sls
+
+/--
+Calls `acsimp.simp_lemmas.add` to add each of the simp lemmas to the simp set.
+-/
+meta def add_list (sls : simp_lemmas) (prfs : list expr) : tactic simp_lemmas :=
+prfs.mfoldl simp_lemmas.add sls
+
+/--
+`sls.add_const n` adds the simp lemma with name `n` to the simp set.
+-/
+meta def add_const (sls : simp_lemmas) (n : name) : tactic simp_lemmas := do
+ns ← list.cons n <$> get_eqn_lemmas_for tt n,
+ns.mfoldl (λ sls n, mk_const n >>= sls.add) sls
+
+/--
+`sls.add_simp n` adds the simp lemma with name `n` to the simp set.
+-/
+meta def add_simp := @add_const
+
+/--
+`sls.add_consts ns` adds each of the simp lemma with names in the list `ns`
+to the simp set.
+-/
+meta def add_consts (sls : simp_lemmas) (ns : list name) : tactic simp_lemmas :=
+ns.mfoldl simp_lemmas.add_const sls
+
+private meta def simp_attr_lemma_names : tactic (list name) := do
+env ← get_env,
+env.fold (pure []) $ λ d ns, do
+  ns ← ns,
+  is_simp ← is_simp_lemma d.to_name,
+  pure $ if is_simp then d.to_name :: ns else ns
+
+/--
+Constructs the default simp set consisting of all lemmas tagged with `@[simp]`.
+-/
+meta def mk_default (sls : simp_lemmas) : tactic simp_lemmas :=
+simp_attr_lemma_names >>= sls.add_consts
+
+/--
+`sls.erase ns` removed the lemmas with names in `ns` from the simp set.
+-/
+meta def erase (sls : simp_lemmas) (ns : list name) : simp_lemmas :=
+rb_map.map (list.filter $ λ e, e.get_app_fn.const_name ∉ ns) sls
+
+/--
+`sls.erase_const n` removed the lemma with name `n` from the simp set.
+-/
+meta def erase_const (sls : simp_lemmas) (n : name) : simp_lemmas :=
+sls.erase [n]
 
 end simp_lemmas
 
@@ -79,16 +167,6 @@ meta def acsimp_rwr_lem_core (t : expr) (ctxs : list expr) : expr → expr → t
 | prf lem := do
   is_prop ← is_prop lem, guard is_prop,
   acsimp_rwr_lem_core (con ``eq_true_intro [] lem prf) `(%%lem = true)
-
-meta def head_sym (e : expr) : name := e.get_app_fn.const_name
-
-meta def acsimp_keys : expr → set_builder name
-| (pi n bi t lem) := acsimp_keys lem
-| `(%%lhs = %%rhs) := {head_sym lhs}
-| `(%%lhs ↔ %%rhs) := {head_sym lhs}
-| `(%%a ∧ %%b) := acsimp_keys a ∪ acsimp_keys b
-| `(¬ %%a) := {head_sym a}
-| lem := {head_sym lem}
 
 meta def acsimp_rwr_lem (t : expr) (prf_lem : expr) (ctxs : list expr) : tactic (expr × expr) :=
 retrieve $ do
@@ -191,46 +269,6 @@ meta def acsimp_core (sls : simp_lemmas) : expr → tactic (expr × option expr)
 (t', prf) ← acsimp_core_core acsimp_core sls t,
 -- when prf.is_some $ trace (con `rwr [] t t'),
 pure (t', prf)
-
-meta def simp_attr_lemma_names : tactic (list name) := do
-env ← get_env,
-env.fold (pure []) $ λ d ns, do
-  ns ← ns,
-  is_simp ← is_simp_lemma d.to_name,
-  pure $ if is_simp then d.to_name :: ns else ns
-
-namespace simp_lemmas
-
-meta def empty : simp_lemmas := mk_rb_map
-
-meta def add (sls : simp_lemmas) (e : expr) : tactic simp_lemmas := do
-ty ← infer_type e,
-pure $ (acsimp_keys ty).to_list.foldr
-  (λ k sls, sls.insert k e)
-  sls
-
-meta def add_list (sls : simp_lemmas) (e : list expr) : tactic simp_lemmas :=
-e.mfoldl simp_lemmas.add sls
-
-meta def add_const (sls : simp_lemmas) (n : name) : tactic simp_lemmas := do
-ns ← list.cons n <$> get_eqn_lemmas_for tt n,
-ns.mfoldl (λ sls n, mk_const n >>= sls.add) sls
-
-meta def add_simp := @add_const
-
-meta def add_consts (sls : simp_lemmas) (ns : list name) : tactic simp_lemmas :=
-ns.mfoldl simp_lemmas.add_const sls
-
-meta def mk_default (sls : simp_lemmas) : tactic simp_lemmas :=
-simp_attr_lemma_names >>= sls.add_consts
-
-meta def erase (sls : simp_lemmas) (ns : list name) : simp_lemmas :=
-rb_map.map (list.filter $ λ e, e.get_app_fn.const_name ∉ ns) sls
-
-meta def erase_const (sls : simp_lemmas) (n : name) : simp_lemmas :=
-sls.erase [n]
-
-end simp_lemmas
 
 end acsimp
 
