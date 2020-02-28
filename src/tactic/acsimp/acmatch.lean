@@ -220,4 +220,21 @@ meta def acmatch : expr → expr → tactic expr | lhs rhs := do
 acmatch_core acmatch lhs rhs
   -- <|> (trace ((const `acmatch_failed [] : expr) lhs rhs) >> failure)
 
+/--
+`acrefl` closes a goal of the form `⊢ a ~ b` where `a` and `b` are ac-equal
+and `~` is a reflexive relation.
+-/
+meta def acrefl : tactic unit := do
+tgt ← target,
+(rel, lhs, rhs) ← relation_lhs_rhs tgt,
+lhs_eq_rhs ← acmatch lhs rhs,
+if rel = ``eq then
+  exact lhs_eq_rhs
+else do
+  (_, refl_prf) ← solve_aux (tgt.app_fn lhs) reflexivity,
+  infer_type refl_prf >>= trace,
+  mk_mapp ``eq.rec [none, lhs, tgt.app_fn, refl_prf, rhs, lhs_eq_rhs] >>= exact
+
+run_cmd add_interactive [``acrefl]
+
 end acsimp
