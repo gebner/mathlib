@@ -1,4 +1,10 @@
-import tactic.core tactic.lint
+/-
+Copyright (c) 2020 Gabriel Ebner. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Gabriel Ebner
+-/
+
+import tactic.core tactic.lint tactic.localized
 
 universes u
 
@@ -24,19 +30,22 @@ instance and.is_commutative' : is_commutative' (∧) := ⟨by intros a b; rw and
 instance or.is_associative' : is_associative' (∨) := ⟨by intros a b c; rw or_assoc⟩
 instance or.is_commutative' : is_commutative' (∨) := ⟨by intros a b; rw or_comm⟩
 
-def set_builder (α : Type) := list α → list α
+/-- `set_builder α` is a copy of `dlist α` where `insert x xs` does not insert duplicates. -/
+def set_builder (α : Type u) := list α → list α
 
 namespace set_builder
+variables {α : Type u}
 
-instance {α} : has_emptyc (set_builder α) := ⟨id⟩
-instance {α} : inhabited (set_builder α) := ⟨∅⟩
+instance : has_emptyc (set_builder α) := ⟨id⟩
+instance : inhabited (set_builder α) := ⟨∅⟩
 
-instance {α} [decidable_eq α] : has_insert α (set_builder α) :=
+instance [decidable_eq α] : has_insert α (set_builder α) :=
 ⟨λ x b s, if x ∈ s then s else x :: s⟩
 
-instance {α} : has_union (set_builder α) := ⟨(∘)⟩
+instance : has_union (set_builder α) := ⟨(∘)⟩
 
-def to_list {α} (b : set_builder α) : list α := b []
+/-- Converts a `set_builder` to a list. -/
+def to_list (b : set_builder α) : list α := b []
 
 end set_builder
 
@@ -44,14 +53,22 @@ namespace acsimp
 
 open tactic expr
 
+/--
+A variant of `expr.const` without an optional argument for the elaboratedness.
+This allows you to write `con ``iff [] lhs rhs`.
+-/
 meta def con (n : name) (l : list level := []) : expr :=
 const n l
 
-section
-variables (acmatch : expr → expr → tactic expr)
-
+/-- Auxiliary definition to be used with `orelse_option`. -/
 meta def commit_to_this_branch := @try_core
 
+/--
+Function that restricts backtracking in the `tactic` monad.
+
+Consider `(a >> commit_to_this_branch b) <|>' c`. If `a` fails, then `c` is
+executed instead. However if `b` fails, then the whole expression fails.
+-/
 meta def orelse_option {α} (t : tactic (option α)) (s : tactic α) : tactic α :=
 do a ← try_core t,
 match a with
@@ -60,11 +77,14 @@ match a with
 | none := s
 end
 
-local infixr `<|>'`:2 := orelse_option
+localized "infixr `<|>'`:2 := _root_.acsimp.orelse_option" in acsimp
 
-lemma congr_arg2 {α} (f : α → α → α) {a a' b b' : α} :
+lemma congr_arg2 {α : Type u} (f : α → α → α) {a a' b b' : α} :
   a = a' → b = b' → f a b = f a' b' :=
 by intros; cc
+
+section
+variables (acmatch : expr → expr → tactic expr)
 
 meta def accongr (op is_assoc : expr) (is_comm : option expr) :
   ∀ lhs rhs lhs' rhs' : expr, tactic expr | lhs rhs lhs' rhs' :=
