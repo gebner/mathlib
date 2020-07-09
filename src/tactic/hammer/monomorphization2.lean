@@ -1,7 +1,4 @@
-import tactic.core
-tactic.hammer.monomorphization
-tactic.hammer.hol
-super
+import tactic.core tactic.hammer.monomorphization tactic.hammer.hol super
 
 local attribute [inline] decidable.to_bool bool.decidable_eq
 option.decidable_exists_mem

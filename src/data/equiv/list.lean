@@ -5,8 +5,8 @@ Author: Mario Carneiro
 
 Additional equiv and encodable instances for lists, finsets, and fintypes.
 -/
-import data.equiv.denumerable data.nat.pairing order.order_iso
-  data.array.lemmas data.fintype
+import data.equiv.denumerable
+import data.finset.sort
 
 open nat list
 
@@ -124,7 +124,8 @@ finset.univ.sort (encodable.encode' α ⁻¹'o (≤))
 theorem mem_sorted_univ {α} [fintype α] [encodable α] (x : α) : x ∈ sorted_univ α :=
 (finset.mem_sort _).2 (finset.mem_univ _)
 
-theorem length_sorted_univ {α} [fintype α] [encodable α] : (sorted_univ α).length = fintype.card α :=
+theorem length_sorted_univ {α} [fintype α] [encodable α] :
+  (sorted_univ α).length = fintype.card α :=
 finset.length_sort _
 
 theorem sorted_univ_nodup {α} [fintype α] [encodable α] : (sorted_univ α).nodup :=
@@ -200,7 +201,7 @@ lemma raise_lower : ∀ {l n}, list.sorted (≤) (n :: l) → raise (lower l n) 
 | []       n h := rfl
 | (m :: l) n h :=
   have n ≤ m, from list.rel_of_sorted_cons h _ (l.mem_cons_self _),
-  by simp [raise, lower, nat.add_sub_cancel' this,
+  by simp [raise, lower, nat.sub_add_cancel this,
            raise_lower (list.sorted_of_sorted_cons h)]
 
 lemma raise_chain : ∀ l n, list.chain (≤) n (raise l n)
@@ -240,7 +241,7 @@ lemma raise_lower' : ∀ {l n}, (∀ m ∈ l, n ≤ m) → list.sorted (<) l →
 | []       n h₁ h₂ := rfl
 | (m :: l) n h₁ h₂ :=
   have n ≤ m, from h₁ _ (l.mem_cons_self _),
-  by simp [raise', lower', nat.add_sub_cancel' this, raise_lower'
+  by simp [raise', lower', nat.sub_add_cancel this, raise_lower'
     (list.rel_of_sorted_cons h₂ : ∀ a ∈ l, m < a) (list.sorted_of_sorted_cons h₂)]
 
 lemma raise'_chain : ∀ l {m n}, m < n → list.chain (<) m (raise' l n)
@@ -276,7 +277,7 @@ namespace equiv
 def list_unit_equiv : list unit ≃ ℕ :=
 { to_fun := list.length,
   inv_fun := list.repeat (),
-  left_inv := λ u, list.injective_length (by simp),
+  left_inv := λ u, list.length_injective (by simp),
   right_inv := λ n, list.length_repeat () n }
 
 def list_nat_equiv_nat : list ℕ ≃ ℕ := denumerable.eqv _

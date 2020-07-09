@@ -3,9 +3,8 @@ Copyright (c) 2019 Sébastien Gouëzel. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Author: Sébastien Gouëzel
 -/
-
-import topology.metric_space.isometry topology.instances.ennreal
-       topology.metric_space.lipschitz
+import topology.metric_space.isometry
+import topology.instances.ennreal
 
 /-!
 # Hausdorff distance
@@ -29,7 +28,7 @@ noncomputable theory
 open_locale classical
 universes u v w
 
-open classical lattice set function topological_space filter
+open classical set function topological_space filter
 
 namespace emetric
 
@@ -80,12 +79,12 @@ begin
     ... ≤ edist x y + edist y z : edist_triangle _ _ _
     ... = edist y z + edist x y : add_comm _ _,
   have : (λz, z + edist x y) (Inf (edist y '' s)) = Inf ((λz, z + edist x y) '' (edist y '' s)),
-  { refine Inf_of_continuous _ _ (by simp),
-    { exact continuous_id.add continuous_const },
-    { assume a b h, simp, apply add_le_add_right' h }},
+  { refine map_Inf_of_continuous_at_of_monotone _ _ (by simp),
+    { exact continuous_at_id.add continuous_at_const },
+    { assume a b h, simp, apply add_le_add_right h _ }},
   simp only [inf_edist] at this,
   rw [inf_edist, inf_edist, this, ← image_comp],
-  simpa only [and_imp, function.comp_app, lattice.le_Inf_iff, exists_imp_distrib, ball_image_iff]
+  simpa only [and_imp, function.comp_app, le_Inf_iff, exists_imp_distrib, ball_image_iff]
 end
 
 /-- The edist to a set depends continuously on the point -/
@@ -107,8 +106,8 @@ begin
   -- z : α,  zs : z ∈ s,  dyz : edist y z < ↑ε / 2
   calc inf_edist x s ≤ edist x z : inf_edist_le_edist_of_mem zs
         ... ≤ edist x y + edist y z : edist_triangle _ _ _
-        ... ≤ (inf_edist x (closure s) + ε / 2) + (ε/2) : add_le_add' (le_of_lt hy) (le_of_lt dyz)
-        ... = inf_edist x (closure s) + ↑ε : by simp [ennreal.add_halves]
+        ... ≤ (inf_edist x (closure s) + ε / 2) + (ε/2) : add_le_add (le_of_lt hy) (le_of_lt dyz)
+        ... = inf_edist x (closure s) + ↑ε : by rw [add_assoc, ennreal.add_halves]
 end
 
 /-- A point belongs to the closure of `s` iff its infimum edistance to this set vanishes -/
@@ -120,7 +119,7 @@ lemma mem_closure_iff_inf_edist_zero : x ∈ closure s ↔ inf_edist x s = 0 :=
 lemma mem_iff_ind_edist_zero_of_closed (h : is_closed s) : x ∈ s ↔ inf_edist x s = 0 :=
 begin
   convert ← mem_closure_iff_inf_edist_zero,
-  exact closure_eq_iff_is_closed.2 h
+  exact h.closure_eq
 end
 
 /-- The infimum edistance is invariant under isometries -/
@@ -161,9 +160,9 @@ variables {α : Type u} {β : Type v} [emetric_space α] [emetric_space β]
 /-- The Hausdorff edistance of a set to itself vanishes -/
 @[simp] lemma Hausdorff_edist_self : Hausdorff_edist s s = 0 :=
 begin
-  erw [Hausdorff_edist_def, lattice.sup_idem, ← le_bot_iff],
+  erw [Hausdorff_edist_def, sup_idem, ← le_bot_iff],
   apply Sup_le _,
-  simp [le_bot_iff, inf_edist_zero_of_mem] {contextual := tt},
+  simp [le_bot_iff, inf_edist_zero_of_mem, le_refl] {contextual := tt},
 end
 
 /-- The Haudorff edistances of `s` to `t` and of `t` to `s` coincide -/
@@ -176,7 +175,7 @@ lemma Hausdorff_edist_le_of_inf_edist {r : ennreal}
   (H1 : ∀x ∈ s, inf_edist x t ≤ r) (H2 : ∀x ∈ t, inf_edist x s ≤ r) :
   Hausdorff_edist s t ≤ r :=
 begin
-  simp only [Hausdorff_edist, -mem_image, set.ball_image_iff, lattice.Sup_le_iff, lattice.sup_le_iff],
+  simp only [Hausdorff_edist, -mem_image, set.ball_image_iff, Sup_le_iff, sup_le_iff],
   exact ⟨H1, H2⟩
 end
 
@@ -228,8 +227,8 @@ ennreal.le_of_forall_epsilon_le $ λε εpos h, begin
   -- z : α,  zt : z ∈ t,  dyz : edist y z < Hausdorff_edist s t + ↑ε / 2
   calc inf_edist x t ≤ edist x z : inf_edist_le_edist_of_mem zt
     ... ≤ edist x y + edist y z : edist_triangle _ _ _
-    ... ≤ (inf_edist x s + ε/2) + (Hausdorff_edist s t + ε/2) : add_le_add' (le_of_lt dxy) (le_of_lt dyz)
-    ... = inf_edist x s + Hausdorff_edist s t + ε : by simp [ennreal.add_halves, add_comm]
+    ... ≤ (inf_edist x s + ε/2) + (Hausdorff_edist s t + ε/2) : add_le_add (le_of_lt dxy) (le_of_lt dyz)
+    ... = inf_edist x s + Hausdorff_edist s t + ε : by simp [ennreal.add_halves, add_comm, add_left_comm]
 end
 
 /-- The Hausdorff edistance is invariant under eisometries -/
@@ -276,26 +275,27 @@ end
 lemma Hausdorff_edist_triangle : Hausdorff_edist s u ≤ Hausdorff_edist s t + Hausdorff_edist t u :=
 begin
   rw Hausdorff_edist_def,
-  simp only [and_imp, set.mem_image, lattice.Sup_le_iff, exists_imp_distrib,
-             lattice.sup_le_iff, -mem_image, set.ball_image_iff],
+  simp only [and_imp, set.mem_image, Sup_le_iff, exists_imp_distrib,
+             sup_le_iff, -mem_image, set.ball_image_iff],
   split,
   show ∀x ∈ s, inf_edist x u ≤ Hausdorff_edist s t + Hausdorff_edist t u, from λx xs, calc
     inf_edist x u ≤ inf_edist x t + Hausdorff_edist t u : inf_edist_le_inf_edist_add_Hausdorff_edist
     ... ≤ Hausdorff_edist s t + Hausdorff_edist t u :
-      add_le_add_right' (inf_edist_le_Hausdorff_edist_of_mem  xs),
+      add_le_add_right (inf_edist_le_Hausdorff_edist_of_mem  xs) _,
   show ∀x ∈ u, inf_edist x s ≤ Hausdorff_edist s t + Hausdorff_edist t u, from λx xu, calc
     inf_edist x s ≤ inf_edist x t + Hausdorff_edist t s : inf_edist_le_inf_edist_add_Hausdorff_edist
     ... ≤ Hausdorff_edist u t + Hausdorff_edist t s :
-      add_le_add_right' (inf_edist_le_Hausdorff_edist_of_mem xu)
+      add_le_add_right (inf_edist_le_Hausdorff_edist_of_mem xu) _
     ... = Hausdorff_edist s t + Hausdorff_edist t u : by simp [Hausdorff_edist_comm, add_comm]
 end
 
 /-- The Hausdorff edistance between a set and its closure vanishes -/
-@[simp] lemma Hausdorff_edist_self_closure : Hausdorff_edist s (closure s) = 0 :=
+@[simp, priority 1100]
+lemma Hausdorff_edist_self_closure : Hausdorff_edist s (closure s) = 0 :=
 begin
   erw ← le_bot_iff,
   simp only [Hausdorff_edist, inf_edist_closure, -le_zero_iff_eq, and_imp,
-    set.mem_image, lattice.Sup_le_iff, exists_imp_distrib, lattice.sup_le_iff,
+    set.mem_image, Sup_le_iff, exists_imp_distrib, sup_le_iff,
     set.ball_image_iff, ennreal.bot_eq_zero, -mem_image],
   simp only [inf_edist_zero_of_mem, mem_closure_iff_inf_edist_zero, le_refl, and_self,
              forall_true_iff] {contextual := tt}
@@ -343,8 +343,8 @@ end,
 /-- Two closed sets are at zero Hausdorff edistance if and only if they coincide -/
 lemma Hausdorff_edist_zero_iff_eq_of_closed (hs : is_closed s) (ht : is_closed t) :
   Hausdorff_edist s t = 0 ↔ s = t :=
-by rw [Hausdorff_edist_zero_iff_closure_eq_closure, closure_eq_iff_is_closed.2 hs,
-       closure_eq_iff_is_closed.2 ht]
+by rw [Hausdorff_edist_zero_iff_closure_eq_closure, hs.closure_eq,
+       ht.closure_eq]
 
 /-- The Haudorff edistance to the empty set is infinite -/
 lemma Hausdorff_edist_empty (ne : s.nonempty) : Hausdorff_edist s ∅ = ∞ :=
@@ -458,12 +458,12 @@ variable (s)
 
 /-- The minimal distance to a set is Lipschitz in point with constant 1 -/
 lemma lipschitz_inf_dist_pt : lipschitz_with 1 (λx, inf_dist x s) :=
-lipschitz_with.one_of_le_add $ λ x y, inf_dist_le_inf_dist_add_dist
+lipschitz_with.of_le_add $ λ x y, inf_dist_le_inf_dist_add_dist
 
 /-- The minimal distance to a set is uniformly continuous in point -/
 lemma uniform_continuous_inf_dist_pt :
   uniform_continuous (λx, inf_dist x s) :=
-(lipschitz_inf_dist_pt s).to_uniform_continuous
+(lipschitz_inf_dist_pt s).uniform_continuous
 
 /-- The minimal distance to a set is continuous in point -/
 lemma continuous_inf_dist_pt : continuous (λx, inf_dist x s) :=
@@ -484,7 +484,7 @@ lemma mem_iff_inf_dist_zero_of_closed (h : is_closed s) (hs : s.nonempty) :
   x ∈ s ↔ inf_dist x s = 0 :=
 begin
   have := @mem_closure_iff_inf_dist_zero _ _ s x hs,
-  rwa closure_eq_iff_is_closed.2 h at this
+  rwa h.closure_eq at this
 end
 
 /-- The infimum distance is invariant under isometries -/
@@ -679,7 +679,8 @@ begin
 end
 
 /-- The Hausdorff distance between a set and its closure vanish -/
-@[simp] lemma Hausdorff_dist_self_closure : Hausdorff_dist s (closure s) = 0 :=
+@[simp, priority 1100]
+lemma Hausdorff_dist_self_closure : Hausdorff_dist s (closure s) = 0 :=
 by simp [Hausdorff_dist]
 
 /-- Replacing a set by its closure does not change the Hausdorff distance. -/

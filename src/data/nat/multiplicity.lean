@@ -3,7 +3,10 @@ Copyright (c) 2019 Chris Hughes. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Chris Hughes
 -/
-import data.nat.choose ring_theory.multiplicity data.nat.modeq algebra.gcd_domain
+import data.nat.choose
+import ring_theory.multiplicity
+import data.nat.modeq
+import algebra.gcd_domain
 /-!
 
 # Natural number multiplicity
@@ -18,6 +21,7 @@ There are also lemmas about the multiplicity of primes in factorials and in bino
 -/
 
 open finset nat multiplicity
+open_locale big_operators
 
 namespace nat
 
@@ -29,7 +33,7 @@ lemma multiplicity_eq_card_pow_dvd {m n b : ℕ} (hm1 : m ≠ 1) (hn0 : 0 < n) (
 calc multiplicity m n = ↑(Ico 1 $ ((multiplicity m n).get (finite_nat_iff.2 ⟨hm1, hn0⟩) + 1)).card :
   by simp
 ... = ↑((finset.Ico 1 b).filter (λ i, m ^ i ∣ n)).card : congr_arg coe $ congr_arg card $
-  finset.ext.2 $ λ i,
+  finset.ext $ λ i,
   have hmn : ¬ m ^ n ∣ n,
     from if hm0 : m = 0
     then λ _, by cases n; simp [*, lt_irrefl, nat.pow_succ] at *
@@ -54,21 +58,22 @@ namespace prime
 
 lemma multiplicity_one {p : ℕ} (hp : p.prime) :
   multiplicity p 1 = 0 :=
-by rw [multiplicity.one_right (mt is_unit_nat.mp (ne_of_gt hp.one_lt))]
+by rw [multiplicity.one_right (mt nat.is_unit_iff.mp (ne_of_gt hp.one_lt))]
 
 lemma multiplicity_mul {p m n : ℕ} (hp : p.prime) :
   multiplicity p (m * n) = multiplicity p m + multiplicity p n :=
-by rw [int.coe_nat_multiplicity, int.coe_nat_multiplicity,
-  int.coe_nat_multiplicity, int.coe_nat_mul, multiplicity.mul (nat.prime_iff_prime_int.1 hp)]
+by rw [← int.coe_nat_multiplicity, ← int.coe_nat_multiplicity,
+  ← int.coe_nat_multiplicity, int.coe_nat_mul, multiplicity.mul (nat.prime_iff_prime_int.1 hp)]
 
 lemma multiplicity_pow {p m n : ℕ} (hp : p.prime) :
-  multiplicity p (m ^ n) = add_monoid.smul n (multiplicity p m) :=
-by induction n; simp [nat.pow_succ, hp.multiplicity_mul, *, hp.multiplicity_one, succ_smul]
+  multiplicity p (m ^ n) = n •ℕ (multiplicity p m) :=
+by induction n; simp [nat.pow_succ, hp.multiplicity_mul, *, hp.multiplicity_one, succ_nsmul,
+  add_comm]
 
 lemma multiplicity_self {p : ℕ} (hp : p.prime) : multiplicity p p = 1 :=
 have h₁ : ¬ is_unit (p : ℤ), from mt is_unit_int.1 (ne_of_gt hp.one_lt),
 have h₂ : (p : ℤ) ≠ 0, from int.coe_nat_ne_zero.2 hp.ne_zero,
-by rw [int.coe_nat_multiplicity, multiplicity_self h₁ h₂]
+by rw [← int.coe_nat_multiplicity, multiplicity_self h₁ h₂]
 
 lemma multiplicity_pow_self {p n : ℕ} (hp : p.prime) : multiplicity p (p ^ n) = n :=
 by induction n; simp [hp.multiplicity_one, nat.pow_succ, hp.multiplicity_mul, *,
@@ -77,35 +82,35 @@ by induction n; simp [hp.multiplicity_one, nat.pow_succ, hp.multiplicity_mul, *,
 /-- The multiplicity of a prime in `fact n` is the sum of the quotients `n / p ^ i`.
   This sum is expressed over the set `Ico 1 b` where `b` is any bound at least `n` -/
 lemma multiplicity_fact {p : ℕ} (hp : p.prime) :
-  ∀ {n b : ℕ}, n ≤ b → multiplicity p n.fact = ((Ico 1 b).sum (λ i, n / p ^ i) : ℕ)
+  ∀ {n b : ℕ}, n ≤ b → multiplicity p n.fact = (∑ i in Ico 1 b, n / p ^ i : ℕ)
 | 0     b hb := by simp [Ico, hp.multiplicity_one]
 | (n+1) b hb :=
   calc multiplicity p (n+1).fact = multiplicity p n.fact + multiplicity p (n+1) :
     by rw [fact_succ, hp.multiplicity_mul, add_comm]
-  ... = ((Ico 1 b).sum (λ i, n / p ^ i) : ℕ) + ((finset.Ico 1 b).filter (λ i, p ^ i ∣ n+1)).card :
+  ... = (∑ i in Ico 1 b, n / p ^ i : ℕ) + ((finset.Ico 1 b).filter (λ i, p ^ i ∣ n+1)).card :
     by rw [multiplicity_fact (le_of_succ_le hb),
       ← multiplicity_eq_card_pow_dvd (ne_of_gt hp.one_lt) (succ_pos _) hb]
-  ... = ((Ico 1 b).sum (λ i, n / p ^ i + if p^i ∣ n+1 then 1 else 0) : ℕ) :
-    by rw [sum_add_distrib, sum_ite (λ _, 1) (λ _, 0) (λ x, x)]; simp
-  ... = ((Ico 1 b).sum (λ i, (n + 1) / p ^ i) : ℕ) :
+  ... = (∑ i in Ico 1 b, (n / p ^ i + if p^i ∣ n+1 then 1 else 0) : ℕ) :
+    by rw [sum_add_distrib, sum_boole]; simp
+  ... = (∑ i in Ico 1 b, (n + 1) / p ^ i : ℕ) :
     congr_arg coe $ finset.sum_congr rfl (by intros; simp [nat.succ_div]; congr)
 
 /-- A prime power divides `fact n` iff it is at most the sum of the quotients `n / p ^ i`.
   This sum is expressed over the set `Ico 1 b` where `b` is any bound at least `n` -/
 lemma pow_dvd_fact_iff {p : ℕ} {n r b : ℕ} (hp : p.prime) (hbn : n ≤ b) :
-   p ^ r ∣ fact n ↔ r ≤ (Ico 1 b).sum (λ i, n / p ^ i) :=
+   p ^ r ∣ fact n ↔ r ≤ ∑ i in Ico 1 b, n / p ^ i :=
 by rw [← enat.coe_le_coe, ← hp.multiplicity_fact hbn, ← pow_dvd_iff_le_multiplicity, nat.pow_eq_pow]
 
 lemma multiplicity_choose_aux {p n b k : ℕ} (hp : p.prime) (hkn : k ≤ n) :
-  (finset.Ico 1 b).sum (λ i, n / p ^ i) =
-  (finset.Ico 1 b).sum (λ i, k / p ^ i) + (finset.Ico 1 b).sum (λ i, (n - k) / p ^ i) +
+  ∑ i in finset.Ico 1 b, n / p ^ i =
+  ∑ i in finset.Ico 1 b, k / p ^ i + ∑ i in finset.Ico 1 b, (n - k) / p ^ i +
   ((finset.Ico 1 b).filter (λ i, p ^ i ≤ k % p ^ i + (n - k) % p ^ i)).card :=
-calc (finset.Ico 1 b).sum (λ i, n / p ^ i)
-    = (finset.Ico 1 b).sum (λ i, (k + (n - k)) / p ^ i) :
+calc ∑ i in finset.Ico 1 b, n / p ^ i
+    = ∑ i in finset.Ico 1 b, (k + (n - k)) / p ^ i :
     by simp only [nat.add_sub_cancel' hkn]
-... = (finset.Ico 1 b).sum (λ i, k / p ^ i + (n - k) / p ^ i +
+... = ∑ i in finset.Ico 1 b, (k / p ^ i + (n - k) / p ^ i +
       if p ^ i ≤ k % p ^ i + (n - k) % p ^ i then 1 else 0) : by simp only [nat.add_div (nat.pow_pos hp.pos _)]
-... = _ : by simp [sum_add_distrib, sum_ite (λ _, 1) (λ _, 0) (λ x, x)]
+... = _ : begin simp only [sum_add_distrib], simp [sum_boole], end -- we have to use `sum_add_distrib` before `add_ite` fires.
 
 /-- The multiplity of `p` in `choose n k` is the number of carries when `k` and `n - k`
   are added in base `p`. The set is expressed by filtering `Ico 1 b` where `b`
@@ -121,7 +126,7 @@ have h₁ : multiplicity p (choose n k) + multiplicity p (k.fact * (n - k).fact)
       hp.multiplicity_fact hnb, hp.multiplicity_mul, hp.multiplicity_fact (le_trans hkn hnb),
       hp.multiplicity_fact (le_trans (nat.sub_le_self _ _) hnb),
       multiplicity_choose_aux hp hkn],
-    simp,
+    simp [add_comm],
   end,
 (enat.add_right_cancel_iff
   (enat.ne_top_iff_dom.2 $

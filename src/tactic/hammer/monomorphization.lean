@@ -1,6 +1,4 @@
-import tactic.core
-tactic.hammer.fo_translation
-super
+import tactic.core tactic.hammer.fo_translation super
 
 local attribute [inline] decidable.to_bool bool.decidable_eq
 option.decidable_exists_mem

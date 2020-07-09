@@ -2,8 +2,14 @@
 Copyright (c) 2018 Patrick Massot. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Patrick Massot, Johannes Hölzl
+-/
+import topology.uniform_space.uniform_embedding
+import topology.uniform_space.complete_separated
+import topology.algebra.group
+import tactic.abel
 
-Uniform structure on topological groups:
+/-!
+# Uniform structure on topological groups
 
 * `topological_add_group.to_uniform_space` and `topological_add_group_is_uniform` can be used to
   construct a canonical uniformity for a topological add group.
@@ -13,8 +19,6 @@ Uniform structure on topological groups:
 * `add_group_with_zero_nhd`: construct the topological structure from a group with a neighbourhood
   around zero. Then with `topological_add_group.to_uniform_space` one can derive a `uniform_space`.
 -/
-import topology.uniform_space.uniform_embedding topology.uniform_space.complete_separated
-import topology.algebra.group
 
 noncomputable theory
 open_locale classical uniformity topological_space
@@ -37,7 +41,7 @@ theorem uniform_add_group.mk' {α} [uniform_space α] [add_group α]
 variables [uniform_space α] [add_group α] [uniform_add_group α]
 
 lemma uniform_continuous_sub : uniform_continuous (λp:α×α, p.1 - p.2) :=
-uniform_add_group.uniform_continuous_sub α
+uniform_add_group.uniform_continuous_sub
 
 lemma uniform_continuous.sub [uniform_space β] {f : β → α} {g : β → α}
   (hf : uniform_continuous f) (hg : uniform_continuous g) : uniform_continuous (λx, f x - g x) :=
@@ -55,7 +59,7 @@ uniform_continuous_id.neg
 lemma uniform_continuous.add [uniform_space β] {f : β → α} {g : β → α}
   (hf : uniform_continuous f) (hg : uniform_continuous g) : uniform_continuous (λx, f x + g x) :=
 have uniform_continuous (λx, f x - - g x), from hf.sub hg.neg,
-by simp * at *
+by simp [*, sub_eq_add_neg] at *
 
 lemma uniform_continuous_add : uniform_continuous (λp:α×α, p.1 + p.2) :=
 uniform_continuous_fst.add uniform_continuous_snd
@@ -86,13 +90,13 @@ lemma uniform_embedding_translate (a : α) : uniform_embedding (λx:α, x + a) :
     rintros ⟨p₁, p₂⟩ ⟨q₁, q₂⟩,
     simp [prod.eq_iff_fst_eq_snd_eq] {contextual := tt}
   end,
-  inj := assume x y, eq_of_add_eq_add_right }
+  inj := add_left_injective a }
 
 section
 variables (α)
 lemma uniformity_eq_comap_nhds_zero : 𝓤 α = comap (λx:α×α, x.2 - x.1) (𝓝 (0:α)) :=
 begin
-  rw [nhds_eq_comap_uniformity, filter.comap_comap_comp],
+  rw [nhds_eq_comap_uniformity, filter.comap_comap],
   refine le_antisymm (filter.map_le_iff_le_comap.1 _) _,
   { assume s hs,
     rcases mem_uniformity_of_uniform_continuous_invariant uniform_continuous_sub hs with ⟨t, ht, hts⟩,
@@ -111,7 +115,7 @@ have embedding (λa, a + (y - x)), from (uniform_embedding_translate (y - x)).em
 show (x, y) ∈ ⋂₀ (𝓤 α).sets ↔ x - y ∈ closure ({0} : set α),
 begin
   rw [this.closure_eq_preimage_closure_image, uniformity_eq_comap_nhds_zero α, sInter_comap_sets],
-  simp [mem_closure_iff_nhds, inter_singleton_nonempty]
+  simp [mem_closure_iff_nhds, inter_singleton_nonempty, sub_eq_add_neg, add_assoc]
 end
 
 lemma uniform_continuous_of_tendsto_zero [uniform_space β] [add_group β] [uniform_add_group β]
@@ -166,7 +170,7 @@ def topological_add_group.to_uniform_space : uniform_space G :=
       begin
         intros p p_comp_rel,
         rcases p_comp_rel with ⟨z, ⟨Hz1, Hz2⟩⟩,
-        simpa using V_sum _ _ Hz1 Hz2
+        simpa [sub_eq_add_neg, add_comm, add_left_comm] using V_sum _ _ Hz1 Hz2
       end,
       exact set.subset.trans comp_rel_sub U_sub },
     { exact monotone_comp_rel monotone_id monotone_id }
@@ -202,7 +206,7 @@ begin
   constructor,
   rw [uniform_continuous, uniformity_prod_eq_prod, tendsto_map'_iff,
     uniformity_eq_comap_nhds_zero' G, tendsto_comap_iff, prod_comap_comap_eq],
-  simpa [(∘)]
+  simpa [(∘), sub_eq_add_neg, add_comm, add_left_comm] using this
 end
 end
 
@@ -225,12 +229,12 @@ variables [add_comm_group α] [add_comm_group β] [add_comm_group γ]
 /- TODO: when modules are changed to have more explicit base ring, then change replace `is_Z_bilin`
 by using `is_bilinear_map ℤ` from `tensor_product`. -/
 class is_Z_bilin (f : α × β → γ) : Prop :=
-(add_left  : ∀ a a' b, f (a + a', b) = f (a, b) + f (a', b))
-(add_right : ∀ a b b', f (a, b + b') = f (a, b) + f (a, b'))
+(add_left []  : ∀ a a' b, f (a + a', b) = f (a, b) + f (a', b))
+(add_right [] : ∀ a b b', f (a, b + b') = f (a, b) + f (a, b'))
 
 variables (f : α × β → γ) [is_Z_bilin f]
 
-instance is_Z_bilin.comp_hom {g : γ → δ} [add_comm_group δ] [is_add_group_hom g] :
+lemma is_Z_bilin.comp_hom {g : γ → δ} [add_comm_group δ] [is_add_group_hom g] :
   is_Z_bilin (g ∘ f) :=
 by constructor; simp [(∘), is_Z_bilin.add_left f, is_Z_bilin.add_right f, is_add_hom.map_add g]
 
@@ -265,7 +269,7 @@ assume a b, is_Z_bilin.neg_left (f ∘ prod.swap) b a
 lemma is_Z_bilin.sub_left : ∀ a a' b, f (a - a', b) = f (a, b) - f (a', b) :=
 begin
   intros,
-  dsimp [algebra.sub],
+  simp [sub_eq_add_neg],
   rw [is_Z_bilin.add_left f, is_Z_bilin.neg_left f]
 end
 
@@ -335,7 +339,7 @@ variables [topological_space α] [add_comm_group α] [topological_add_group α]
 variables [topological_space β] [add_comm_group β] [topological_add_group β]
 variables [topological_space γ] [add_comm_group γ] [topological_add_group γ]
 variables [topological_space δ] [add_comm_group δ] [topological_add_group δ]
-variables [uniform_space G] [add_comm_group G] [uniform_add_group G] [separated G] [complete_space G]
+variables [uniform_space G] [add_comm_group G] [uniform_add_group G] [separated_space G] [complete_space G]
 variables {e : β → α} [is_add_group_hom e] (de : dense_inducing e)
 variables {f : δ → γ} [is_add_group_hom f] (df : dense_inducing f)
 variables {φ : β × δ → G} (hφ : continuous φ) [bilin : is_Z_bilin φ]
@@ -415,7 +419,7 @@ begin
   { repeat { rw is_Z_bilin.sub_left φ },
     repeat { rw is_Z_bilin.sub_right φ },
     apply eq_of_sub_eq_zero,
-    simp },
+    simp [sub_eq_add_neg], abel },
   rw key_formula,
   have h₁ := HU x x' xU₂ x'U₂,
   have h₂ := H x x' xU₁ x'U₁ y₁ y' y₁_in y'V₁,

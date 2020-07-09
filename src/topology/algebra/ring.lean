@@ -5,10 +5,10 @@ Authors: Patrick Massot, Johannes Hölzl
 
 Theory of topological rings.
 -/
+import topology.algebra.group
+import ring_theory.ideals
 
-import topology.algebra.group ring_theory.ideals
-
-open classical set lattice filter topological_space
+open classical set filter topological_space
 open_locale classical
 
 section topological_ring
@@ -37,6 +37,7 @@ instance topological_ring.to_topological_semiring : topological_semiring α := {
 
 @[priority 100] -- see Note [lower instance priority]
 instance topological_ring.to_topological_add_group : topological_add_group α := {..t}
+
 end topological_ring
 
 section topological_comm_ring
@@ -44,10 +45,10 @@ variables {α : Type*} [topological_space α] [comm_ring α] [topological_ring �
 
 def ideal.closure (S : ideal α) : ideal α :=
 { carrier := closure S,
-  zero := subset_closure S.zero_mem,
-  add  := assume x y hx hy,
+  zero_mem' := subset_closure S.zero_mem,
+  add_mem'  := assume x y hx hy,
     mem_closure2 continuous_add hx hy $ assume a b, S.add_mem,
-  smul  := assume c x hx,
+  smul_mem'  := assume c x hx,
     have continuous (λx:α, c * x) := continuous_const.mul continuous_id,
     mem_closure this hx $ assume a, S.mul_mem_left }
 

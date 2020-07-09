@@ -2,30 +2,16 @@
 Copyright (c) 2017 Johannes Hölzl. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Johannes Hölzl, Mario Carneiro
-
-The real numbers ℝ.
-
-They are constructed as the topological completion of ℚ. With the following steps:
-(1) prove that ℚ forms a uniform space.
-(2) subtraction and addition are uniform continuous functions in this space
-(3) for multiplication and inverse this only holds on bounded subsets
-(4) ℝ is defined as separated Cauchy filters over ℚ (the separation requires a quotient construction)
-(5) extend the uniform continuous functions along the completion
-(6) proof field properties using the principle of extension of identities
-
-TODO
-
-generalizations:
-* topological groups & rings
-* order topologies
-* Archimedean fields
-
 -/
-import topology.metric_space.basic topology.algebra.uniform_group
-       topology.algebra.ring tactic.linarith
+import topology.metric_space.basic
+import topology.algebra.uniform_group
+import topology.algebra.ring
+/-!
+# Topological properties of ℝ
+-/
 
 noncomputable theory
-open classical set lattice filter topological_space metric
+open classical set filter topological_space metric
 open_locale classical
 open_locale topological_space
 
@@ -37,7 +23,7 @@ metric_space.induced coe rat.cast_injective real.metric_space
 
 theorem rat.dist_eq (x y : ℚ) : dist x y = abs (x - y) := rfl
 
-@[elim_cast, simp] lemma rat.dist_cast (x y : ℚ) : dist (x : ℝ) y = dist x y := rfl
+@[norm_cast, simp] lemma rat.dist_cast (x y : ℚ) : dist (x : ℝ) y = dist x y := rfl
 
 section low_prio
 -- we want to ignore this instance for the next declaration
@@ -49,16 +35,18 @@ begin
     (le_antisymm refl_le_uniformity $ λ r ru,
       mem_uniformity_dist.2 ⟨1, zero_lt_one, λ a b h,
       mem_principal_sets.1 ru $ dist_le_zero.1 (_ : (abs (a - b) : ℝ) ≤ 0)⟩),
-  simpa using (@int.cast_le ℝ _ _ 0).2 (int.lt_add_one_iff.1 $
-    (@int.cast_lt ℝ _ (abs (a - b)) 1).1 $ by simpa using h)
+  have : (abs (↑a - ↑b) : ℝ) < 1 := h,
+  have : abs (a - b) < 1, by norm_cast at this; assumption,
+  have : abs (a - b) ≤ 0 := (@int.lt_add_one_iff _ 0).mp this,
+  norm_cast, assumption
 end
 end low_prio
 
 theorem int.dist_eq (x y : ℤ) : dist x y = abs (x - y) := rfl
 
-@[elim_cast, simp] theorem int.dist_cast_real (x y : ℤ) : dist (x : ℝ) y = dist x y := rfl
+@[norm_cast, simp] theorem int.dist_cast_real (x y : ℤ) : dist (x : ℝ) y = dist x y := rfl
 
-@[elim_cast, simp] theorem int.dist_cast_rat (x y : ℤ) : dist (x : ℚ) y = dist x y :=
+@[norm_cast, simp] theorem int.dist_cast_rat (x y : ℤ) : dist (x : ℚ) y = dist x y :=
 by rw [← int.dist_cast_real, ← rat.dist_cast]; congr' 1; norm_cast
 
 theorem uniform_continuous_of_rat : uniform_continuous (coe : ℚ → ℝ) :=
@@ -226,12 +214,12 @@ metric.totally_bounded_iff.2 $ λ ε ε0, begin
   rcases exists_nat_gt ((b - a) / ε) with ⟨n, ba⟩,
   rw [div_lt_iff' ε0, sub_lt_iff_lt_add'] at ba,
   let s := (λ i:ℕ, a + ε * i) '' {i:ℕ | i < n},
-  refine ⟨s, finite_image _ ⟨set.fintype_lt_nat _⟩, λ x h, _⟩,
-  rcases h with ⟨ax, xb⟩,
+  refine ⟨s, (set.finite_lt_nat _).image _, _⟩,
+  rintro x ⟨ax, xb⟩,
   let i : ℕ := ⌊(x - a) / ε⌋.to_nat,
   have : (i : ℤ) = ⌊(x - a) / ε⌋ :=
     int.to_nat_of_nonneg (floor_nonneg.2 $ le_of_lt (div_pos (sub_pos.2 ax) ε0)),
-  simp, refine ⟨_, ⟨i, _, rfl⟩, _⟩,
+  simp, use i, split,
   { rw [← int.coe_nat_lt, this],
     refine int.cast_lt.1 (lt_of_le_of_lt (floor_le _) _),
     rw [int.cast_coe_nat, div_lt_iff' ε0, sub_lt_iff_lt_add'],
@@ -241,7 +229,7 @@ metric.totally_bounded_iff.2 $ λ ε ε0, begin
     { have := lt_floor_add_one ((x - a) / ε),
       rwa [div_lt_iff' ε0, mul_add, mul_one] at this },
     { have := floor_le ((x - a) / ε),
-      rwa [ge, sub_nonneg, ← le_sub_iff_add_le', ← le_div_iff' ε0] } }
+      rwa [sub_nonneg, ← le_sub_iff_add_le', ← le_div_iff' ε0] } }
 end
 
 lemma real.totally_bounded_ball (x ε : ℝ) : totally_bounded (ball x ε) :=
@@ -296,7 +284,7 @@ section
 
 lemma closure_of_rat_image_lt {q : ℚ} : closure ((coe:ℚ → ℝ) '' {x | q < x}) = {r | ↑q ≤ r} :=
 subset.antisymm
-  ((closure_subset_iff_subset_of_is_closed (is_closed_ge' _)).2
+  ((is_closed_ge' _).closure_subset_iff.2
     (image_subset_iff.2 $ λ p h, le_of_lt $ (@rat.cast_lt ℝ _ _ _).2 h)) $
 λ x hx, mem_closure_iff_nhds.2 $ λ t ht,
 let ⟨ε, ε0, hε⟩ := metric.mem_nhds_iff.1 ht in
@@ -336,5 +324,10 @@ begin
   rw this at I,
   exact bounded.subset I bounded_closed_ball
 end⟩
+
+lemma real.image_Icc {f : ℝ → ℝ} {a b : ℝ} (hab : a ≤ b) (h : continuous_on f $ Icc a b) :
+  f '' Icc a b = Icc (Inf $ f '' Icc a b) (Sup $ f '' Icc a b) :=
+eq_Icc_of_connected_compact ⟨(nonempty_Icc.2 hab).image f, is_preconnected_Icc.image f h⟩
+  (compact_Icc.image_of_continuous_on h)
 
 end

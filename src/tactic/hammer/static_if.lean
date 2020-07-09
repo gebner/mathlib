@@ -11,13 +11,13 @@ meta class branchable {α : Sort u} (a : α) :=
 (eval_cond : tactic bool)
 
 meta instance decidable (p : Prop) [decidable p] : branchable p :=
-⟨_, pure p⟩
+⟨pure p⟩
 
 meta instance tactic (t : tactic bool) : branchable t :=
-⟨_, t⟩
+⟨t⟩
 
 meta instance bool (t : bool) : branchable t :=
-⟨_, pure t⟩
+⟨pure t⟩
 
 end static_if
 

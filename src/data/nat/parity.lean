@@ -5,7 +5,7 @@ Authors: Jeremy Avigad
 
 The `even` predicate on the natural numbers.
 -/
-import .modeq algebra.group_power
+import data.nat.modeq
 
 namespace nat
 
@@ -15,6 +15,7 @@ by cases mod_two_eq_zero_or_one n with h h; simp [h]
 @[simp] theorem mod_two_ne_zero {n : nat} : ¬ n % 2 = 0 ↔ n % 2 = 1 :=
 by cases mod_two_eq_zero_or_one n with h h; simp [h]
 
+/-- A natural number `n` is `even` if `2 | n`. -/
 def even (n : nat) : Prop := 2 ∣ n
 
 theorem even_iff {n : nat} : even n ↔ n % 2 = 0 :=
@@ -46,14 +47,31 @@ begin
   exact @modeq.modeq_add _ _ 1 _ 1 h₁ h₂
 end
 
+theorem even.add {m n : ℕ} (hm : m.even) (hn : n.even) : (m + n).even :=
+even_add.2 $ by simp only [*]
+
 @[simp] theorem not_even_bit1 (n : nat) : ¬ even (bit1 n) :=
 by simp [bit1] with parity_simps
+
+lemma two_not_dvd_two_mul_add_one (a : ℕ) : ¬(2 ∣ 2 * a + 1) :=
+begin
+  convert not_even_bit1 a,
+  exact two_mul a,
+end
+
+lemma two_not_dvd_two_mul_sub_one : Π {a : ℕ} (w : 0 < a), ¬(2 ∣ 2 * a - 1)
+| (a+1) _ := two_not_dvd_two_mul_add_one a
 
 @[parity_simps] theorem even_sub {m n : nat} (h : n ≤ m) : even (m - n) ↔ (even m ↔ even n) :=
 begin
   conv { to_rhs, rw [←nat.sub_add_cancel h, even_add] },
   by_cases h : even n; simp [h]
 end
+
+theorem even.sub {m n : ℕ} (hm : m.even) (hn : n.even) : (m - n).even :=
+(le_total n m).elim
+  (λ h, by simp only [even_sub h, *])
+  (λ h, by simp only [sub_eq_zero_of_le h, even_zero])
 
 @[parity_simps] theorem even_succ {n : nat} : even (succ n) ↔ ¬ even n :=
 by rw [succ_eq_add_one, even_add]; simp [not_even_one]
@@ -69,7 +87,7 @@ begin
 end
 
 @[parity_simps] theorem even_pow {m n : nat} : even (m^n) ↔ even m ∧ n ≠ 0 :=
-by { induction n with n ih; simp [*, pow_succ, even_mul], tauto }
+by { induction n with n ih; simp [*, nat.pow_succ, even_mul], tauto }
 
 lemma even_div {a b : ℕ} : even (a / b) ↔ a % (2 * b) / b = 0 :=
 by rw [even, dvd_iff_mod_eq_zero, nat.div_mod_eq_mod_mul_div, mul_comm]

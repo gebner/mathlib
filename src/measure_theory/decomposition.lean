@@ -11,7 +11,7 @@ TODO:
 -/
 import measure_theory.measure_space
 
-open set lattice filter
+open set filter
 open_locale classical topological_space
 
 namespace measure_theory
@@ -26,7 +26,7 @@ by linarith
 lemma hahn_decomposition (hμ : μ univ < ⊤) (hν : ν univ < ⊤) :
   ∃s, is_measurable s ∧
     (∀t, is_measurable t → t ⊆ s → ν t ≤ μ t) ∧
-    (∀t, is_measurable t → t ⊆ - s → μ t ≤ ν t) :=
+    (∀t, is_measurable t → t ⊆ sᶜ → μ t ≤ ν t) :=
 begin
   let d : set α → ℝ := λs, ((μ s).to_nnreal : ℝ) - (ν s).to_nnreal,
   let c : set ℝ := d '' {s | is_measurable s },
@@ -75,7 +75,7 @@ begin
   { use (μ univ).to_nnreal,
     rintros r ⟨s, hs, rfl⟩,
     refine le_trans (sub_le_self _ $ nnreal.coe_nonneg _) _,
-    rw [nnreal.coe_le, ← ennreal.coe_le_coe, to_nnreal_μ, to_nnreal_μ],
+    rw [nnreal.coe_le_coe, ← ennreal.coe_le_coe, to_nnreal_μ, to_nnreal_μ],
     exact measure_mono (subset_univ _) },
 
   have c_nonempty : c.nonempty := nonempty.image _ ⟨_, is_measurable.empty⟩,
@@ -160,13 +160,12 @@ begin
       { assume n, exact is_measurable.Inter (assume m, hf _ _) },
       { exact assume n m hnm, subset_Inter
           (assume i, subset.trans (Inter_subset (f n) i) $ f_subset_f hnm $ le_refl _) } },
-    refine le_of_tendsto_of_tendsto (@at_top_ne_bot ℕ _ _) hγ hd (univ_mem_sets' $ assume m, _),
-    change γ - 2 * (1 / 2) ^ m ≤ d (⋂ (n : ℕ), f m n),
+    refine le_of_tendsto_of_tendsto' at_top_ne_bot hγ hd (assume m, _),
     have : tendsto (λn, d (f m n)) at_top (𝓝 (d (⋂ n, f m n))),
     { refine d_Inter _ _ _,
       { assume n, exact hf _ _ },
       { assume n m hnm, exact f_subset_f (le_refl _) hnm } },
-    refine ge_of_tendsto (@at_top_ne_bot ℕ _ _) this (mem_at_top_sets.2 ⟨m, assume n hmn, _⟩),
+    refine ge_of_tendsto (@at_top_ne_bot ℕ _ _) this (eventually_at_top.2 ⟨m, assume n hmn, _⟩),
     change γ - 2 * (1 / 2) ^ m ≤ d (f m n),
     refine le_trans _ (le_d_f _ _ hmn),
     exact le_add_of_le_of_nonneg (le_refl _) (pow_nonneg (le_of_lt $ half_pos $ zero_lt_one) _) },
@@ -179,7 +178,7 @@ begin
       calc γ + 0 ≤ d s : by rw [add_zero]; exact γ_le_d_s
         ... = d (s \ t) + d t : by rw [d_split _ _ hs ht, inter_eq_self_of_subset_right hts]
         ... ≤ γ + d t : add_le_add (d_le_γ _ (hs.diff ht)) (le_refl _)),
-    rw [← to_nnreal_μ, ← to_nnreal_ν, ennreal.coe_le_coe, ← nnreal.coe_le],
+    rw [← to_nnreal_μ, ← to_nnreal_ν, ennreal.coe_le_coe, ← nnreal.coe_le_coe],
     simpa only [d, le_sub_iff_add_le, zero_add] using this },
   { assume t ht hts,
     have : d t ≤ 0,
@@ -192,7 +191,7 @@ begin
           exact assume a ⟨hat, has⟩, hts hat has
         end
         ... ≤ γ + 0 : by rw [add_zero]; exact d_le_γ _ (hs.union ht)),
-    rw [← to_nnreal_μ, ← to_nnreal_ν, ennreal.coe_le_coe, ← nnreal.coe_le],
+    rw [← to_nnreal_μ, ← to_nnreal_ν, ennreal.coe_le_coe, ← nnreal.coe_le_coe],
     simpa only [d, sub_le_iff_le_add, zero_add] using this }
 end
 

@@ -1,4 +1,4 @@
-import init.category.combinators meta.expr
+import meta.expr
 
 namespace tactic
 

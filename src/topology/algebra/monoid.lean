@@ -8,11 +8,11 @@ Theory of topological monoids.
 TODO: generalize `topological_monoid` and `topological_add_monoid` to semigroups, or add a type class
 `topological_operator α (*)`.
 -/
-import topology.constructions topology.continuous_on
+import topology.continuous_on
 import algebra.pi_instances
 
-open classical set lattice filter topological_space
-open_locale classical topological_space
+open classical set filter topological_space
+open_locale classical topological_space big_operators
 
 universes u v w
 variables {α : Type u} {β : Type v} {γ : Type w}
@@ -36,7 +36,7 @@ variables [topological_space α] [monoid α] [topological_monoid α]
 
 @[to_additive]
 lemma continuous_mul : continuous (λp:α×α, p.1 * p.2) :=
-topological_monoid.continuous_mul α
+topological_monoid.continuous_mul
 
 @[to_additive]
 lemma continuous.mul [topological_space β] {f : β → α} {g : β → α}
@@ -65,13 +65,13 @@ lemma continuous_pow : ∀ n : ℕ, continuous (λ a : α, a ^ n)
 
 @[to_additive]
 lemma tendsto_mul {a b : α} : tendsto (λp:α×α, p.fst * p.snd) (𝓝 (a, b)) (𝓝 (a * b)) :=
-continuous_iff_continuous_at.mp (topological_monoid.continuous_mul α) (a, b)
+continuous_iff_continuous_at.mp topological_monoid.continuous_mul (a, b)
 
 @[to_additive]
 lemma filter.tendsto.mul {f : β → α} {g : β → α} {x : filter β} {a b : α}
   (hf : tendsto f x (𝓝 a)) (hg : tendsto g x (𝓝 b)) :
   tendsto (λx, f x * g x) x (𝓝 (a * b)) :=
-tendsto.comp (by rw [←nhds_prod_eq]; exact tendsto_mul) (hf.prod_mk hg)
+tendsto_mul.comp (hf.prod_mk_nhds hg)
 
 @[to_additive]
 lemma continuous_at.mul [topological_space β] {f : β → α} {g : β → α} {x : β}
@@ -119,7 +119,7 @@ variables [topological_space α] [comm_monoid α]
 @[to_additive]
 lemma is_submonoid.mem_nhds_one (β : set α) [is_submonoid β] (oβ : is_open β) :
   β ∈ 𝓝 (1 : α) :=
-mem_nhds_sets_iff.2 ⟨β, (by refl), oβ, is_submonoid.one_mem _⟩
+mem_nhds_sets_iff.2 ⟨β, (by refl), oβ, is_submonoid.one_mem⟩
 
 variable [topological_monoid α]
 
@@ -131,7 +131,7 @@ by { rcases s with ⟨l⟩, simp, exact tendsto_list_prod l }
 
 @[to_additive]
 lemma tendsto_finset_prod {f : γ → β → α} {x : filter β} {a : γ → α} (s : finset γ) :
-  (∀c∈s, tendsto (f c) x (𝓝 (a c))) → tendsto (λb, s.prod (λc, f c b)) x (𝓝 (s.prod a)) :=
+  (∀c∈s, tendsto (f c) x (𝓝 (a c))) → tendsto (λb, ∏ c in s, f c b) x (𝓝 (∏ c in s, a c)) :=
 tendsto_multiset_prod _
 
 @[to_additive]
@@ -141,7 +141,7 @@ by { rcases s with ⟨l⟩, simp, exact continuous_list_prod l }
 
 @[to_additive]
 lemma continuous_finset_prod [topological_space β] {f : γ → β → α} (s : finset γ) :
-  (∀c∈s, continuous (f c)) → continuous (λa, s.prod (λc, f c a)) :=
+  (∀c∈s, continuous (f c)) → continuous (λa, ∏ c in s, f c a) :=
 continuous_multiset_prod _
 
 end

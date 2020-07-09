@@ -1,27 +1,45 @@
-DEPLOY_NIGHTLY_GITHUB_USER=leanprover-community-bot
+# Arguments:
+# $1 : path to mathlib from working directory (mathlib: ".", doc-gen: "mathlib")
+# $2 : path to doc-gen from mathlib (mathlib: "doc-gen", doc-gen: "..")
+# $3 : path to mathlib from doc-gen (mathlib: "..", doc-gen: "mathlib")
+
+DEPLOY_GITHUB_USER=leanprover-community-bot
 
 set -e
 set -x
 
-# By default, github actions overrides the credentials used to access any
-# github url so that it uses the github-actions[bot] user.  We want to access
-# github using a different username.
-git config --unset http.https://github.com/.extraheader
+cd $1
+lean_version="$(sed '/^lean_version/!d;s/.*"\(.*\)".*/\1/' leanpkg.toml)"
+mathlib_git_hash="$(git log -1 --pretty=format:%h)"
 
-git_hash="$(git log -1 --pretty=format:%h)"
-git clone https://github.com/leanprover-community/doc-gen.git
-cd doc-gen
-sed -i "s/rev = \"\S*\"/rev = \"$git_hash\"/" leanpkg.toml
-echo -e "builtin_path\npath ./src\npath ../src" > leanpkg.path
-git clone "https://$DEPLOY_NIGHTLY_GITHUB_USER:$DEPLOY_NIGHTLY_GITHUB_TOKEN@github.com/leanprover-community/mathlib_docs.git"
+cd $2
+docgen_git_hash="$(git log -1 --pretty=format:%h)"
+# use the commit hash in mathlib's leanpkg.toml in doc_gen's leanpkg.toml
+sed -i "s/rev = \"\S*\"/rev = \"$mathlib_git_hash\"/" leanpkg.toml
+echo -e "builtin_path\npath ./src\npath $3/src" > leanpkg.path
+
+git clone "https://$DEPLOY_GITHUB_USER:$DEPLOY_GITHUB_TOKEN@github.com/leanprover-community/mathlib_docs.git"
+
+# skip if docs for this commit have already been generated
+if [ "$(cd mathlib_docs && git log -1 --pretty=format:%s)" == "automatic update to mathlib $mathlib_git_hash using doc-gen $docgen_git_hash" ]; then
+  exit 0
+fi
+
 rm -rf mathlib_docs/docs/
-elan override set leanprover-community/lean:nightly
-python3 -m pip install --upgrade pip
-pip3 install markdown2 toml
-./gen_docs -w -r "../" -t "mathlib_docs/docs/"
-cd mathlib_docs/docs
-git config user.email "leanprover.community@gmail.com"
-git config user.name "leanprover-community-bot"
-git add -A .
-git commit -m "automatic update to $git_hash"
-git push
+
+# Force doc_gen project to match the Lean version used in CI.
+# If they are incompatible, something in doc_gen will fail to compile,
+# but this is better than trying to recompile all of mathlib.
+elan override set "$lean_version"
+
+./gen_docs -w -r "$3/" -t "mathlib_docs/docs/"
+
+if { [ "$github_repo" = "leanprover-community/mathlib" ] || [ "$github_repo" = "leanprover-community/doc-gen" ]; } && [ "$github_event" = "push" ] && [ "$github_ref" = "refs/heads/master" ]; then
+  cd mathlib_docs/docs
+  git config user.email "leanprover.community@gmail.com"
+  git config user.name "leanprover-community-bot"
+  git add -A .
+  git checkout --orphan master2
+  git commit -m "automatic update to mathlib $mathlib_git_hash using doc-gen $docgen_git_hash"
+  git push -f origin HEAD:master
+fi

@@ -5,15 +5,19 @@ Authors: Floris van Doorn
 -/
 import tactic.core
 /-!
-  # simps attribute
-  This file defines the `@[simps]` attribute, to automatically generate simp-lemmas
-  reducing a definition when projections are applied to it.
+# simps attribute
 
-  ## Tags
-  structures, projections, simp, simplifier, generates declarations
+This file defines the `@[simps]` attribute, to automatically generate simp-lemmas
+reducing a definition when projections are applied to it.
+
+## Tags
+
+structures, projections, simp, simplifier, generates declarations
 -/
 
 open tactic expr
+
+declare_trace simps.verbose
 
 /-- Add a lemma with `nm` stating that `lhs = rhs`. `type` is the type of both `lhs` and `rhs`,
   `args` is the list of local constants occurring, and `univs` is the list of universe variables.
@@ -27,8 +31,10 @@ meta def simps_add_projection (nm : name) (type lhs rhs : expr) (args : list exp
   let decl_value := refl_ap.lambdas args,
   let decl := declaration.thm decl_name univs decl_type (pure decl_value),
   add_decl decl <|> fail format!"failed to add projection lemma {decl_name}.",
-  when add_simp $
-    set_basic_attribute `simp decl_name tt >> set_basic_attribute `_refl_lemma decl_name tt
+  when_tracing `simps.verbose trace!"[simps] > adding projection\n        > {decl_name} : {decl_type}",
+  when add_simp $ do
+    set_basic_attribute `_refl_lemma decl_name tt,
+    set_basic_attribute `simp decl_name tt
 
 /-- Derive lemmas specifying the projections of the declaration.
   If `todo` is non-empty, it will generate exactly the names in `todo`. -/
@@ -65,7 +71,8 @@ meta def simps_add_projections : ∀(e : environment) (nm : name) (suffix : stri
         -- check whether all elements in `todo` have a projection as prefix
         guard (todo.all $ λ x, projs.any $ λ proj, ("_" ++ proj.last).is_prefix_of x) <|>
           let x := (todo.find $ λ x, projs.all $ λ proj, ¬ ("_" ++ proj.last).is_prefix_of x).iget,
-            simp_lemma := nm.append_suffix $ suffix ++ x, needed_proj := (x.split_on '_').tail.head in
+            simp_lemma := nm.append_suffix $ suffix ++ x,
+            needed_proj := (x.split_on '_').tail.head in
           fail format!"Invalid simp-lemma {simp_lemma}. Projection {needed_proj} doesn't exist.",
         pairs.mmap' $ λ ⟨proj, new_rhs⟩, do
           new_type ← infer_type new_rhs,
@@ -116,23 +123,26 @@ prod.mk <$> (option.is_none <$> (tk "lemmas_only")?) <*>
 
 
 /--
-* Automatically derive lemmas specifying the projections of this declaration.
-* Example: (note that the forward and reverse functions are specified differently!)
-  ```
-  @[simps] def refl (α) : α ≃ α := ⟨id, λ x, x, λ x, rfl, λ x, rfl⟩
-  ```
-  derives two simp-lemmas:
-  ```
-  @[simp] lemma refl_to_fun (α) (x : α) : (refl α).to_fun x = id x
-  @[simp] lemma refl_inv_fun (α) (x : α) : (refl α).inv_fun x = x
-  ```
+The `@[simps]` attribute automatically derives lemmas specifying the projections of this
+declaration.
+
+Example: (note that the forward and reverse functions are specified differently!)
+```lean
+@[simps] def refl (α) : α ≃ α := ⟨id, λ x, x, λ x, rfl, λ x, rfl⟩
+```
+derives two simp-lemmas:
+```lean
+@[simp] lemma refl_to_fun (α) (x : α) : (refl α).to_fun x = id x
+@[simp] lemma refl_inv_fun (α) (x : α) : (refl α).inv_fun x = x
+```
+
 * It does not derive simp-lemmas for the prop-valued projections.
 * It will automatically reduce newly created beta-redexes, but not unfold any definitions.
 * If one of the fields itself is a structure, this command will recursively create
   simp-lemmas for all fields in that structure.
 * You can use `@[simps proj1 proj2 ...]` to only generate the projection lemmas for the specified
   projections. For example:
-  ```
+  ```lean
   attribute [simps to_fun] refl
   ```
 * If one of the values is an eta-expanded structure, we will eta-reduce this structure.
@@ -146,6 +156,9 @@ prod.mk <$> (option.is_none <$> (tk "lemmas_only")?) <*>
 * `@[simps]` reduces let-expressions where necessary.
 * If one of the fields is a partially applied constructor, we will eta-expand it
   (this likely never happens).
+* When option `trace.simps.verbose` is true, `simps` will print the name and type of the
+  lemmas it generates.
+
   -/
 @[user_attribute] meta def simps_attr : user_attribute unit (bool × bool × list string) :=
 { name := `simps,
@@ -154,3 +167,9 @@ prod.mk <$> (option.is_none <$> (tk "lemmas_only")?) <*>
   after_set := some $
     λ n _ _, do (add_simp, short_nm, todo) ← simps_attr.get_param n,
       simps_tac n add_simp short_nm todo }
+
+add_tactic_doc
+{ name                     := "simps",
+  category                 := doc_category.attr,
+  decl_names               := [`simps_attr],
+  tags                     := ["simplification"] }

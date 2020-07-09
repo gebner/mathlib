@@ -1,6 +1,5 @@
 import tactic.hammer.feature_search system.io tactic.core meta.coinductive_predicates
-tactic.hammer.fol super
-tactic.hammer.fo_translation2
+  tactic.hammer.fol super tactic.hammer.fo_translation2
 
 namespace hammer
 

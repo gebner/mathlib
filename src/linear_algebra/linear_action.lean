@@ -55,12 +55,12 @@ end
 @[simp] lemma linear_action_add_act [linear_action R M N] (m m' : M) (n : N) :
   linear_action.act R (m + m') n = linear_action.act R m n +
                                    linear_action.act R m' n :=
-linear_action.add_act R m m' n
+linear_action.add_act m m' n
 
 @[simp] lemma linear_action_act_add [linear_action R M N] (m : M) (n n' : N) :
   linear_action.act R m (n + n') = linear_action.act R m n +
                                    linear_action.act R m n' :=
-linear_action.act_add R m n n'
+linear_action.act_add m n n'
 
 @[simp] lemma linear_action_act_smul [linear_action R M N] (r : R) (m : M) (n : N) :
   linear_action.act R (r • m) n = r • (linear_action.act R m n) :=
@@ -92,10 +92,10 @@ A linear action yields a linear map to the endomorphism algebra.
 -/
 def to_endo_map (α : linear_action R M N) : M →ₗ[R] module.End R N :=
 { to_fun  := λ m,
-  { to_fun := λ n, linear_action.act R m n,
-    add    := by { intros, simp, },
-    smul   := by { intros, simp, }, },
-  add     := by { intros, ext, simp, },
-  smul    := by { intros, ext, simp, } }
+  { to_fun    := λ n, linear_action.act R m n,
+    map_add'  := by { intros, simp, },
+    map_smul' := by { intros, simp, }, },
+  map_add'  := by { intros, ext, simp, },
+  map_smul' := by { intros, ext, simp, } }
 
 end linear_action
