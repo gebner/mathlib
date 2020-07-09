@@ -545,7 +545,7 @@ timetac "vampire took" $
 exec_cmd "vampire" ["-p", "tptp"] tptp
 
 meta def filter_lemmas (axs : list name) : tactic (list (expr × name)) := do
-(tptp, ax_names) ← do_trans axs,
+(tptp, ax_names) ← timetac "Translation to TPTP took" $ do_trans axs,
 (tactic.unsafe_run_io $ do f ← io.mk_file_handle "hammer.p" io.mode.write, io.fs.write f tptp.to_string.to_char_buffer, io.fs.close f),
 let ax_names := rb_map.of_list ax_names,
 tptp_out ← timetac "vampire took" $ exec_cmd "bash" ["-c",
