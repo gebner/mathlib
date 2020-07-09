@@ -168,16 +168,16 @@ match ns.find e' with
 end
 
 meta def to_tf0.var_name' (n : name) (t : hol_ty) : to_tf0 string :=
-to_tf0.name'_core (expr.local_const n n binder_info.default t.to_expr) t var_tptpify_name
+to_tf0.name'_core (expr.local_const n n binder_info.default t.to_expr) t var_tptpify_name'
 
 meta def to_tf0.con_name' (e : expr) (t : hol_ty) : to_tf0 string :=
-to_tf0.name'_core e t fn_tptpify_name
+to_tf0.name'_core e t fn_tptpify_name'
 
 meta def to_tf0.ax_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e hol_ty.tbool ax_tptpify_name
+to_tf0.name'_core e hol_ty.tbool ax_tptpify_name'
 
 meta def to_tf0.sort_name' (e : expr) : to_tf0 string :=
-to_tf0.name'_core e hol_ty.tbool (λ n, "t" ++ tptpify_name n)
+to_tf0.name'_core e hol_ty.tbool (λ n, "t" ++ tptpify_name_core n)
 
 meta mutual def to_tf0_hol_ty, to_tf0_hol_ty_fun
 with to_tf0_hol_ty : hol_ty → to_tf0 format

@@ -344,13 +344,13 @@ match ns.find e with
 end
 
 meta def to_tf0.var_name (e : expr) : to_tf0 string :=
-to_tf0.name_core e var_tptpify_name
+to_tf0.name_core e var_tptpify_name'
 
 meta def to_tf0.con_name (e : expr) : to_tf0 string :=
-to_tf0.name_core e fn_tptpify_name
+to_tf0.name_core e fn_tptpify_name'
 
 meta def to_tf0.ax_name (e : expr) : to_tf0 string :=
-to_tf0.name_core e ax_tptpify_name
+to_tf0.name_core e ax_tptpify_name'
 
 meta mutual def to_tf0_ty, to_tf0_ty_fun
 with to_tf0_ty : expr → to_tf0 format
@@ -372,7 +372,7 @@ meta def to_tf0_tm : list expr → expr → to_tf0 format
 | lctx `(false) := pure "$false"
 | lctx lc@(local_const _ _ _ _) :=
   format.of_string <$> if lc ∈ lctx then to_tf0.var_name lc else to_tf0.con_name lc
-| lctx (const n _) := pure $ fn_tptpify_name n
+| lctx (const n _) := pure $ fn_tptpify_name' n
 | lctx `(%%x = %%y) := tptpify_binop "=" <$> to_tf0_tm lctx x <*> to_tf0_tm lctx y
 | lctx `(%%x ∧ %%y) := tptpify_binop "&" <$> to_tf0_tm lctx x <*> to_tf0_tm lctx y
 | lctx `(%%x ∨ %%y) := tptpify_binop "|" <$> to_tf0_tm lctx x <*> to_tf0_tm lctx y

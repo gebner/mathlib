@@ -522,8 +522,9 @@ goal' ← if goal_is_prop then trans_fml [] goal
     x' ← get_var_name x,
     fo_fml.ex x' <$> trans_type [x] x goal),
 let anns := (tptpify_ann "conjecture" `_goal goal'.simp) :: anns,
+let (anns, _) := (monad.sequence anns).run mk_name_map,
 let tptp := format.join $ list.intersperse (format.line ++ format.line) anns.reverse,
-pure (tptp, out.map (λ o, (ax_tptpify_name o.n, o.prf, o.n)))
+pure (tptp, out.map (λ o, (ax_tptpify_name' o.n, o.prf, o.n)))
 
 meta def exec_cmd (cmd : string) (args : list string) (stdin : string) : tactic string :=
 tactic.unsafe_run_io $ do

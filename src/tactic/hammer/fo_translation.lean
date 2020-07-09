@@ -96,8 +96,9 @@ goal' ← if goal_is_prop then trans_fml [] goal
 out ← trans_state.out <$> get,
 let anns := out.map $ λ o, tptpify_ann "axiom" o.n o.fml,
 let anns := (tptpify_ann "conjecture" `_goal goal') :: anns,
+let (anns, _) := (monad.sequence anns).run mk_name_map,
 let tptp := format.join $ list.intersperse (format.line ++ format.line) anns.reverse,
-pure (tptp, out.map (λ o, (ax_tptpify_name o.n, o.n)))
+pure (tptp, out.map (λ o, (ax_tptpify_name' o.n, o.n)))
 
 -- #eval do_trans [
 --   ``nat.prod_dvd_and_dvd_of_dvd_prod,

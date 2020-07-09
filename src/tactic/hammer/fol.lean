@@ -202,56 +202,79 @@ end
 def tptpify_string (s : string) : string :=
 (s.to_list >>= tptpify_char).as_string
 
-meta def tptpify_name : name → string
+meta def tptpify_name_core : name → string
 | name.anonymous := ""
 | (name.mk_string s name.anonymous) := tptpify_string s
 | (name.mk_numeral i name.anonymous) := to_string i
-| (name.mk_string s n) := tptpify_name n ++ "_o_" ++ tptpify_string s
-| (name.mk_numeral s n) := tptpify_name n ++ "_n" ++ to_string s
+| (name.mk_string s n) := tptpify_name_core n ++ "_o_" ++ tptpify_string s
+| (name.mk_numeral s n) := tptpify_name_core n ++ "_n" ++ to_string s
 
-meta def fn_tptpify_name : name → string
-| `_T := "t"
-| `_S := "s"
-| `_A := "a"
-| `_P := "p"
-| n := "c" ++ tptpify_name n
+local notation `M ` x := state (name_map string) x
 
-meta def var_tptpify_name (n : name) : string :=
-"X" ++ tptpify_name n
+meta def tptpify_name (n : name) : M string := do
+cache ← get,
+match cache.find n with
+| some s := pure s
+| none := do
+  let s := tptpify_name_core n,
+  put $ cache.insert n s,
+  pure s
+end
 
-meta def ax_tptpify_name (n : name) : string :=
+meta def fn_tptpify_name : name → M string
+| `_T := pure "t"
+| `_S := pure "s"
+| `_A := pure "a"
+| `_P := pure "p"
+| n := (λ s, "c" ++ s) <$> tptpify_name n
+
+meta def var_tptpify_name (n : name) : M string :=
+(λ s, "X" ++ s) <$> tptpify_name n
+
+meta def ax_tptpify_name (n : name) : M string :=
 fn_tptpify_name n
 
-meta def tptpify_term : fo_term → format
-| (fo_term.fn s []) := fn_tptpify_name s
-| (fo_term.fn s as) := format.group $ fn_tptpify_name s ++
-  format.paren (format.join $ list.intersperse ("," ++ format.line) $ as.map tptpify_term)
-| (fo_term.var s) := var_tptpify_name s
+meta def ax_tptpify_name' (n : name) : string := ((ax_tptpify_name n).run mk_name_map).1
+meta def fn_tptpify_name' (n : name) : string := ((fn_tptpify_name n).run mk_name_map).1
+meta def var_tptpify_name' (n : name) : string := ((var_tptpify_name n).run mk_name_map).1
+
+meta def tptpify_term : fo_term → M format
+| (fo_term.fn s []) := to_fmt <$> fn_tptpify_name s
+| (fo_term.fn s as) := do
+  s' ← fn_tptpify_name s,
+  as' ← as.mmap tptpify_term,
+  pure $ format.group $ s' ++ (format.paren $
+    format.join $ list.intersperse ("," ++ format.line) $ as')
+| (fo_term.var s) := to_fmt <$> var_tptpify_name s
 
 meta def tptpify_binop (op : string) (a : format) (b : format) : format :=
 format.paren' $ a ++ format.space ++ op ++ format.line ++ b
 
-meta def tptpify_quant (q : string) (x : name) (b : format) : format :=
-format.paren' $ q ++ "[" ++ var_tptpify_name x ++ "]:" ++ format.line ++ b
+meta def tptpify_quant (q : string) (x : name) (b : M format) : M format := do
+b ← b,
+x ← var_tptpify_name x,
+pure $ format.paren' $ q ++ "[" ++ x ++ "]:" ++ format.line ++ b
 
 section open fo_fml
-meta def tptpify_fml : fo_fml → format
-| (eq a b) := tptpify_binop "=" (tptpify_term a) (tptpify_term b)
-| true := "$true"
-| false := "$false"
-| (neg a) := format.paren' $ "~" ++ format.line ++ (tptpify_fml a)
-| (and a b) := tptpify_binop "&" (tptpify_fml a) (tptpify_fml b)
-| (or a b) := tptpify_binop "|" (tptpify_fml a) (tptpify_fml b)
-| (imp a b) := tptpify_binop "=>" (tptpify_fml a) (tptpify_fml b)
-| (iff a b) := tptpify_binop "<=>" (tptpify_fml a) (tptpify_fml b)
+meta def tptpify_fml : fo_fml → M format
+| (eq a b) := tptpify_binop "=" <$> (tptpify_term a) <*> (tptpify_term b)
+| true := pure "$true"
+| false := pure "$false"
+| (neg a) := (λ s, format.paren' $ "~" ++ format.line ++ s) <$> (tptpify_fml a)
+| (and a b) := tptpify_binop "&" <$> (tptpify_fml a) <*> (tptpify_fml b)
+| (or a b) := tptpify_binop "|" <$> (tptpify_fml a) <*> (tptpify_fml b)
+| (imp a b) := tptpify_binop "=>" <$> (tptpify_fml a) <*> (tptpify_fml b)
+| (iff a b) := tptpify_binop "<=>" <$> (tptpify_fml a) <*> (tptpify_fml b)
 | (all x a) := tptpify_quant "!" x (tptpify_fml a)
 | (ex x a) := tptpify_quant "?" x (tptpify_fml a)
 | (pred s as) := tptpify_term (fo_term.fn s as)
 end
 
-meta def tptpify_ann (role : string) (n : name) (f : fo_fml) : format :=
-format.group $ format.nest 1 $ "fof(" ++ format.group (
-    ax_tptpify_name n ++ "," ++ format.line ++ role ++ ",")
-  ++ format.line ++ tptpify_fml f ++ ")."
+meta def tptpify_ann (role : string) (n : name) (f : fo_fml) : M format := do
+n ← ax_tptpify_name n,
+f ← tptpify_fml f,
+pure $ format.group $ format.nest 1 $ "fof(" ++ format.group (
+    n ++ "," ++ format.line ++ role ++ ",")
+  ++ format.line ++ f ++ ")."
 
 end hammer
