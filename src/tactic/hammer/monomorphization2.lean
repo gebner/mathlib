@@ -402,8 +402,8 @@ lems.mmap' (λ ⟨l, t⟩, do
   -- t ← infer_type l >>= pp,
   t ← pp t,
   trace (format.nest 4 $ format.group $ "  " ++ l' ++ " :" ++ format.line ++ t)),
-trace "\nTry:",
-trace $ to_fmt "by super " ++ (to_fmt $ lems.map $ λ ⟨lem, _⟩, get_lemma_name lem).group,
+trace $ to_fmt "\nTry this: super " ++
+  (to_fmt $ lems.map $ λ ⟨lem, _⟩, get_lemma_name lem).group,
 pure lems
 
 meta def find_lemmas3 (axs : parse $ optional $ list_of ident) (max_lemmas := 100) : tactic unit := do

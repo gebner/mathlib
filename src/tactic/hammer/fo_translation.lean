@@ -183,8 +183,7 @@ lems ←
     timetac "Lemma filtering took" $
       hammer.filter_lemmas1 axs goal
   end,
-trace "\nTry:",
-trace $ to_fmt "by super " ++ (to_fmt lems).group,
+trace $ to_fmt "\nTry this: super " ++ (to_fmt lems).group,
 pure lems
 
 meta def find_lemmas1 (axs : parse $ optional $ list_of ident) (max_lemmas := 10) : tactic unit := do

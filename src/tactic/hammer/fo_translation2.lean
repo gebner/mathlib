@@ -605,8 +605,7 @@ lems ←
     timetac "Lemma filtering took" $
       hammer.fotr2.filter_lemmas axs
   end,
-trace "\nTry:",
-trace $ to_fmt "by super " ++ (to_fmt $ lems.map $ λ lem,
+trace $ to_fmt "\nTry this: super " ++ (to_fmt $ lems.map $ λ lem,
   match lem.1.get_app_fn, lem.2 with
   | (expr.local_const _ n _ _), _ := n
   | _, n := n
